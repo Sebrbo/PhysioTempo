@@ -1,29 +1,43 @@
 # PhysioTempo
 
-**FR** — Métronome de rééducation : tempo réglable avec **rampe linéaire** (ex. 40 → 50 BPM en 120 s), volume ajustable, interface simple et **bilingue (FR/EN)**.  
-**EN** — Rehab metronome: adjustable tempo with **linear ramp** (e.g., 40 → 50 BPM over 120 s), volume control, simple **bilingual UI**.
+**Lien direct / Live app** → https://sebrbo.github.io/PhysioTempo/
 
-## Fonctionnalités / Features
-- Rampe **linéaire** du BPM de départ au BPM d’arrivée, puis maintien
-- Web Audio avec planification précise (lookahead)
-- Volume en temps réel
-- FR/EN (préférence mémorisée)
-- PWA hors-ligne (manifest + service worker)
-- Zéro dépendance externe
+---
 
-## Utilisation
-Ouvrir `index.html` (HTTPS conseillé).  
-Raccourci : **Espace** pour démarrer/arrêter.
+## 🇫🇷 FR — À propos
 
-## Déploiement GitHub Pages
-Settings → **Pages** → *Deploy from a branch* → `main` / **`/ (root)`**.
+**PhysioTempo** est un métronome de rééducation, simple et bilingue (FR/EN), permettant de faire **accélérer le tempo de manière contrôlée** sur une durée donnée (ex. **40 → 50 BPM en 120 s**), puis de **maintenir** le tempo atteint. Le volume est réglable. L’application est une **PWA hors-ligne** : elle s’installe et fonctionne sans connexion après le premier chargement sécurisé (HTTPS).
 
-## Icônes
-Utilise `tools/make-icons.html` pour générer rapidement `icons/icon-192.png` et `icons/icon-512.png`.
+### Comment ça marche (en bref)
+- L’app utilise **Web Audio** pour générer un bip court et net.
+- Un **planificateur précis** programme les prochains bips avec un léger « look-ahead » pour éviter les dérives.
+- Le tempo **augmente linéairement** du **BPM de départ** au **BPM d’arrivée** sur la **durée d’accélération** choisie, puis **reste** au BPM d’arrivée.
+- L’afficheur montre le **BPM instantané**.
 
-## Licence / License
-- **Code** : PolyForm Noncommercial 1.0.0 — usage commercial interdit. Voir `LICENSE`.  
-  SPDX: `PolyForm-Noncommercial-1.0.0`
-- **Assets** : CC BY-NC 4.0. Voir `LICENSE-CC-BY-NC-4.0.md`.
+### Utilisation rapide
+1. Ouvrez l’app : https://sebrbo.github.io/PhysioTempo/  
+2. Réglez **BPM de départ**, **BPM d’arrivée**, **Durée d’accélération (s)** et **Volume**.  
+3. Cliquez **Démarrer** (ou appuyez sur **Espace**).  
+4. Cliquez **Arrêter** pour stopper à tout moment.  
+→ Bouton **Préréglage** pour 40 → 50 BPM en 120 s.  
+→ **Langue** : FR/EN (préférence mémorisée).
 
-© 2025 Sebrbo and contributors
+### Paramètres détaillés
+- **BPM de départ** : tempo initial (20–300).  
+- **BPM d’arrivée** : tempo cible (20–300).  
+- **Durée d’accélération (s)** : temps pour passer du départ à l’arrivée. Si 0, le tempo passe **immédiatement** au BPM d’arrivée.  
+- **Volume** : niveau de sortie en temps réel.  
+- **Raccourci clavier** : **Espace** = Démarrer/Arrêter.
+
+### PWA (hors-ligne & installation)
+- Après le **premier chargement en HTTPS**, l’app est disponible **hors-ligne**.  
+- **Installer** :  
+  - **Desktop** : Chrome/Edge → icône « Installer ».  
+  - **Android** : « Ajouter à l’écran d’accueil ».  
+  - **iOS/iPadOS (Safari)** : Partager → « Sur l’écran d’accueil ».
+
+### Conseils & limites connues
+- **Autoplay** : le son peut nécessiter une **interaction utilisateur** (clic/tap) au premier lancement.  
+- **iOS** : vérifiez le **mode silencieux** matériel.  
+- **Précision** : le scheduler est robuste, mais la sortie audio dépend du matériel/OS. Utiliser un navigateur à jour.
+
