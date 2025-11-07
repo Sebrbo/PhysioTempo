@@ -1,0 +1,14 @@
+{
+  "name": "PhysioTempo",
+  "short_name": "PhysioTempo",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "lang": "fr",
+  "description": "Métronome de rééducation bilingue avec rampe linéaire (ex. 40→50 BPM en 120 s).",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
