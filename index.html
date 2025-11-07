@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhysioTempo</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="topbar">
+      <h1>PhysioTempo</h1>
+      <div class="lang">
+        <label for="langSelect" class="i18n" data-key="language">Langue</label>
+        <select id="langSelect" aria-label="Langue">
+          <option value="en">English</option>
+          <option value="fr" selected>Français</option>
+        </select>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="grid">
+        <label>
+          <span class="i18n" data-key="start_bpm_label">BPM de départ</span>
+          <input id="startBpm" type="number" min="20" max="300" step="1" value="40" />
+        </label>
+
+        <label>
+          <span class="i18n" data-key="end_bpm_label">BPM d’arrivée</span>
+          <input id="endBpm" type="number" min="20" max="300" step="1" value="50" />
+        </label>
+
+        <label>
+          <span class="i18n" data-key="ramp_label">Durée d’accélération (s)</span>
+          <input id="rampSeconds" type="number" min="0" max="3600" step="1" value="120" />
+        </label>
+
+        <label class="volume">
+          <span class="i18n" data-key="volume_label">Volume</span>
+          <input id="volume" type="range" min="0" max="100" value="60" />
+        </label>
+      </div>
+
+      <div class="buttons">
+        <button id="preset" class="ghost">
+          <span class="i18n" data-key="preset">Préréglage 40 → 50 en 120 s</span>
+        </button>
+        <div class="spacer"></div>
+        <button id="startBtn" class="primary">
+          <span class="i18n" data-key="start">Démarrer</span>
+        </button>
+        <button id="stopBtn" class="danger" disabled>
+          <span class="i18n" data-key="stop">Arrêter</span>
+        </button>
+      </div>
+
+      <div class="readout">
+        <div>
+          <small class="muted i18n" data-key="current_bpm">BPM actuel</small>
+          <div id="bpmNow" class="mono big">—</div>
+        </div>
+        <div>
+          <small class="muted i18n" data-key="status">Statut</small>
+          <div id="status" class="mono">au repos</div>
+        </div>
+      </div>
+      <p class="hint i18n" data-key="hint">
+        Cliquez sur Démarrer. Le tempo accélère linéairement du BPM de départ vers le BPM d’arrivée pendant la durée choisie, puis reste au BPM d’arrivée.
+      </p>
+    </section>
+
+    <footer class="foot">
+      <span class="muted">&copy; 2025 PhysioTempo</span>
+    </footer>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
