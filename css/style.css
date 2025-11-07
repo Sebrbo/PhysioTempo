@@ -1,0 +1,114 @@
+/* 
+  PhysioTempo styles
+  (c) 2025 Sebrbo and contributors
+  License (code): PolyForm Noncommercial 1.0.0 — see LICENSE
+  Assets: CC BY-NC 4.0 — see LICENSE-CC-BY-NC-4.0.md
+  SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+*/
+* { box-sizing: border-box; }
+:root {
+  --bg: #0b0d12;
+  --card: #141925;
+  --text: #e6e9ef;
+  --muted: #9aa4b2;
+  --accent: #4da3ff;
+  --accent-2: #6cf3c3;
+  --danger: #ff6b6b;
+  --shadow: 0 10px 20px rgba(0,0,0,0.35);
+  --radius: 12px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --sans: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+}
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--text);
+  background: radial-gradient(1200px 600px at 20% -10%, #1b2436, #0b0d12);
+}
+.container {
+  max-width: 880px;
+  margin: 36px auto;
+  padding: 0 16px;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: space-between;
+}
+h1 { font-size: 1.6rem; letter-spacing: 0.5px; margin: 0; }
+.lang label { margin-right: 8px; color: var(--muted); }
+.lang select {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid #273043;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.card {
+  margin-top: 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)), var(--card);
+  border: 1px solid #222b3d;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 16px;
+}
+@media (max-width: 800px) {
+  .grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+label { display: grid; gap: 8px; font-weight: 600; }
+input[type="number"] {
+  background: #0d1320;
+  color: var(--text);
+  border: 1px solid #2a344a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 1rem;
+}
+.volume input[type="range"] {
+  width: 100%;
+}
+.buttons { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.buttons .spacer { flex: 1; }
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+button.primary {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #031322;
+}
+button.danger {
+  background: var(--danger);
+  color: white;
+}
+button.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid #2a344a;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.readout {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 14px;
+}
+.mono { font-family: var(--mono); }
+.big { font-size: 1.8rem; }
+.muted { color: var(--muted); }
+.hint { margin-top: 12px; color: var(--muted); }
+.foot { margin-top: 20px; text-align: center; color: var(--muted); font-size: 0.9rem; }
