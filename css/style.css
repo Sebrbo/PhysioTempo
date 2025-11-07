@@ -71,9 +71,7 @@ input[type="number"] {
   padding: 10px 12px;
   font-size: 1rem;
 }
-.volume input[type="range"] {
-  width: 100%;
-}
+.volume input[type="range"] { width: 100%; }
 .buttons { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
 .buttons .spacer { flex: 1; }
 button {
@@ -84,29 +82,11 @@ button {
   font-weight: 700;
   letter-spacing: 0.2px;
 }
-button.primary {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  color: #031322;
-}
-button.danger {
-  background: var(--danger);
-  color: white;
-}
-button.ghost {
-  background: transparent;
-  color: var(--text);
-  border: 1px solid #2a344a;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.readout {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 14px;
-}
+button.primary { background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #031322; }
+button.danger { background: var(--danger); color: white; }
+button.ghost { background: transparent; color: var(--text); border: 1px solid #2a344a; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.readout { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
 .mono { font-family: var(--mono); }
 .big { font-size: 1.8rem; }
 .muted { color: var(--muted); }
