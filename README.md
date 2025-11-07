@@ -4,30 +4,26 @@
 **EN** — Rehab metronome: adjustable tempo with **linear ramp** (e.g., 40 → 50 BPM over 120 s), volume control, simple **bilingual UI**.
 
 ## Fonctionnalités / Features
-- Rampe **linéaire** : du BPM de départ au BPM d’arrivée sur une durée définie, puis maintien
-- Démarrage/arrêt immédiat (Web Audio, planification avec lookahead)
-- Réglage de volume en temps réel
+- Rampe **linéaire** du BPM de départ au BPM d’arrivée, puis maintien
+- Web Audio avec planification précise (lookahead)
+- Volume en temps réel
 - FR/EN (préférence mémorisée)
-- Aucune dépendance externe
+- PWA hors-ligne (manifest + service worker)
+- Zéro dépendance externe
 
 ## Utilisation
-Ouvrir `index.html` dans un navigateur moderne (Chrome, Edge, Safari).  
-Raccourci clavier : **Espace** pour démarrer/arrêter.
+Ouvrir `index.html` (HTTPS conseillé).  
+Raccourci : **Espace** pour démarrer/arrêter.
 
 ## Déploiement GitHub Pages
-Paramètres → Pages → *Deploy from a branch* → `main` / **`/ (root)`**.
+Settings → **Pages** → *Deploy from a branch* → `main` / **`/ (root)`**.
 
-## Roadmap (idées)
-- Accent de mesure / signatures (3/4, 4/4, 6/8…)
-- Tap tempo
-- PWA (manifest + service worker) et mode hors-ligne
-- Compte à rebours / minuterie de séance
-- Thèmes clair/sombre
-- Presets personnalisés
+## Icônes
+Utilise `tools/make-icons.html` pour générer rapidement `icons/icon-192.png` et `icons/icon-512.png`.
 
 ## Licence / License
-- **Code** : PolyForm Noncommercial 1.0.0 — **usage commercial interdit**. Voir `LICENSE`.  
+- **Code** : PolyForm Noncommercial 1.0.0 — usage commercial interdit. Voir `LICENSE`.  
   SPDX: `PolyForm-Noncommercial-1.0.0`
-- **Assets** (icônes, images, textes) : **CC BY-NC 4.0**. Voir `LICENSE-CC-BY-NC-4.0.md`.
+- **Assets** : CC BY-NC 4.0. Voir `LICENSE-CC-BY-NC-4.0.md`.
 
 © 2025 Sebrbo and contributors
