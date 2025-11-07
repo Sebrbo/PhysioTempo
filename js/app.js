@@ -4,8 +4,7 @@
  * License (code): PolyForm Noncommercial 1.0.0 — see LICENSE
  * Assets: CC BY-NC 4.0 — see LICENSE-CC-BY-NC-4.0.md
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
- */
-// PhysioTempo — linear ramp metronome with Web Audio precise scheduling
+*/
 (() => {
   'use strict';
 
@@ -67,7 +66,7 @@
     applyI18n(langSelect.value);
   });
 
-  // ---------- Audio and scheduler ----------
+  // ---------- Audio & scheduler ----------
   let audioCtx = null;
   let masterGain = null;
   let isPlaying = false;
@@ -76,10 +75,10 @@
   let lookaheadTimer = null;
   let rafId = null;
 
-  const scheduleAheadTime = 0.15;
-  const lookahead = 25;
+  const scheduleAheadTime = 0.15; // s
+  const lookahead = 25;           // ms
   const clickHz = 880;
-  const clickLen = 0.03;
+  const clickLen = 0.03;          // s
 
   function ensureAudio() {
     if (!audioCtx) {
@@ -90,14 +89,12 @@
     }
   }
 
-  function setStatus(text) {
-    statusEl.textContent = text;
-  }
+  function setStatus(text) { statusEl.textContent = text; }
 
   function currentBpmAt(elapsed) {
     const b0 = clamp(Number(startBpmEl.value), 20, 300);
     const b1 = clamp(Number(endBpmEl.value), 20, 300);
-    const T = Math.max(0, Number(rampEl.value));
+    const T  = Math.max(0, Number(rampEl.value));
     if (T <= 0) return b1;
     if (elapsed < 0) elapsed = 0;
     if (elapsed >= T) return b1;
@@ -107,10 +104,10 @@
 
   function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
-  function scheduleClick(time, accented = false) {
-    const osc = audioCtx.createOscillator();
+  function scheduleClick(time) {
+    const osc  = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.frequency.value = accented ? clickHz * 1.25 : clickHz;
+    osc.frequency.value = clickHz;
     const g = masterGain.gain.value;
     gain.gain.setValueAtTime(0, time);
     gain.gain.linearRampToValueAtTime(g, time + 0.002);
@@ -171,9 +168,19 @@
   stopBtn.addEventListener('click', stop);
   volEl.addEventListener('input', () => { if (masterGain) masterGain.gain.value = Number(volEl.value) / 100; });
   presetBtn.addEventListener('click', () => { startBpmEl.value = 40; endBpmEl.value = 50; rampEl.value = 120; });
+
   document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); if (startBtn.disabled) stop(); else start(); }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (startBtn.disabled) stop(); else start();
+    }
   });
-  [startBpmEl, endBpmEl].forEach(inp => { inp.addEventListener('change', () => { inp.value = clamp(Number(inp.value || 0), 20, 300); }); });
+
+  [startBpmEl, endBpmEl].forEach(inp => {
+    inp.addEventListener('change', () => {
+      inp.value = clamp(Number(inp.value || 0), 20, 300);
+    });
+  });
+
   setStatus('au repos');
 })();
