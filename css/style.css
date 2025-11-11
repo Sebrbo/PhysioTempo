@@ -54,19 +54,13 @@ h1 { font-size: 1.6rem; letter-spacing: 0.5px; margin: 0; }
   box-shadow: var(--shadow);
   padding: 22px;
 }
-.mode-row {
-  margin-bottom: 12px;
-  display: flex;
-  gap: 12px;
-}
+.mode-row { margin-bottom: 12px; display: flex; gap: 12px; }
 .grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0,1fr));
   gap: 16px;
 }
-@media (max-width: 980px) {
-  .grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-}
+@media (max-width: 980px) { .grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 label, fieldset { display: grid; gap: 8px; font-weight: 600; }
 fieldset { border: 1px solid #2a344a; border-radius: 10px; padding: 12px; }
 legend { padding: 0 6px; color: var(--muted); font-weight: 700; }
@@ -80,6 +74,7 @@ input[type="number"], select {
 }
 .volume input[type="range"] { width: 100%; }
 .hidden { display: none !important; }
+.row { display: flex; align-items: center; gap: 10px; }
 
 .with-unit { position: relative; }
 .with-unit .unit {
@@ -109,3 +104,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .muted { color: var(--muted); }
 .hint { margin-top: 12px; color: var(--muted); }
 .foot { margin-top: 20px; text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+/* Overlay compte à rebours */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; user-select: none;
+}
+.countdown {
+  font-size: clamp(3rem, 10vw, 7rem);
+  font-weight: 900; letter-spacing: 2px;
+  padding: 24px 36px; border-radius: 20px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #031322; box-shadow: var(--shadow);
+}
+.overlay.hidden { display: none; }
