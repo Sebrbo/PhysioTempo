@@ -1,5 +1,5 @@
 /*!
- * PhysioTempo — rehab cadence trainer with multiple modes
+ * PhysioTempo — rehab cadence trainer with countdown & auto-restart
  * (c) 2025 Sebrbo and contributors
  * License (code): PolyForm Noncommercial 1.0.0 — see LICENSE
  * Assets: CC BY-NC 4.0 — see LICENSE-CC-BY-NC-4.0.md
@@ -23,15 +23,17 @@
       start_bpm_label: "Start cadence (bpm)",
       end_bpm_label: "End cadence (bpm)",
       ramp_label: "Ramp duration (s)",
-
       steady_bpm_label: "Cadence (bpm)",
       steady_secs_label: "Duration (s)",
-
       random_min_bpm_label: "Min cadence (bpm)",
       random_max_bpm_label: "Max cadence (bpm)",
       random_secs_label: "Duration (s)",
-
       volume_label: "Volume",
+
+      start_options: "Start & cycles",
+      auto_restart_label: "Auto-restart",
+      auto_restart_delay_label: "Restart delay (s)",
+
       preset: "Preset 40 → 50 in 120s",
       start: "Start",
       stop: "Stop",
@@ -39,9 +41,8 @@
       status: "Status",
       time_left: "Time left",
 
-      // ⬇️ MAJ : s'arrête à la fin de la rampe
       hint_accel:
-        "Progressive: cadence ramps linearly from start to end, then stops automatically at the end of the ramp.",
+        "Progressive: cadence ramps linearly from start to end, then stops automatically.",
       hint_steady:
         "Fixed (timed): constant cadence for the selected duration, then stops automatically.",
       hint_random:
@@ -57,15 +58,17 @@
       start_bpm_label: "Cadence de départ (bpm)",
       end_bpm_label: "Cadence d’arrivée (bpm)",
       ramp_label: "Durée d’accélération (s)",
-
       steady_bpm_label: "Cadence (bpm)",
       steady_secs_label: "Durée (s)",
-
       random_min_bpm_label: "Cadence min (bpm)",
       random_max_bpm_label: "Cadence max (bpm)",
       random_secs_label: "Durée (s)",
-
       volume_label: "Volume",
+
+      start_options: "Démarrage & cycles",
+      auto_restart_label: "Redémarrage automatique",
+      auto_restart_delay_label: "Délai de redémarrage (s)",
+
       preset: "Préréglage 40 → 50 en 120 s",
       start: "Démarrer",
       stop: "Arrêter",
@@ -73,11 +76,10 @@
       status: "Statut",
       time_left: "Temps restant",
 
-      // ⬇️ MAJ : s'arrête à la fin de la rampe
       hint_accel:
-        "Cadence progressive : la cadence augmente linéairement de la valeur de départ à la valeur d’arrivée, puis s’arrête automatiquement à la fin de la durée.",
+        "Cadence progressive : la cadence augmente linéairement de la valeur de départ à la valeur d’arrivée, puis s’arrête automatiquement.",
       hint_steady:
-        "Cadence fixe (durée) : cadence constante pendant le temps choisi, puis arrêt automatique.",
+        "Cadence fixe (durée) : cadence constante pendant la durée choisie, puis arrêt automatique.",
       hint_random:
         "Cadence aléatoire : chaque battement utilise une cadence tirée entre Min et Max pendant la durée choisie, puis arrêt automatique."
     }
@@ -115,6 +117,12 @@
   const langSelect = $('#langSelect');
   const modeSelect = $('#mode');
   const hintEl   = $('#hintText');
+
+  const autoRestartEl = $('#autoRestart');
+  const autoRestartDelayEl = $('#autoRestartDelay');
+
+  const overlayEl = $('#overlay');
+  const countdownEl = $('#countdown');
 
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
@@ -163,8 +171,13 @@
   let nextNoteTime = 0;
   let lookaheadTimer = null;
   let rafId = null;
-  let sessionEndTime = null; // fin automatique (tous les modes désormais)
+  let sessionEndTime = null;
   let lastRandomBpm = null;
+
+  // Countdown & auto-restart
+  let countdownAbort = false;
+  let autoRestartTimerId = null;
+  let manualStop = false;
 
   const scheduleAheadTime = 0.15; // seconds
   const lookahead = 25;           // ms
@@ -271,38 +284,83 @@
     timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
   }
 
-  async function start() {
-    ensureAudio();
-    await audioCtx.resume();
-    isPlaying = true;
-    setStatus(langSelect.value === 'fr' ? 'lecture' : 'playing');
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    masterGain.gain.value = Number(volEl.value) / 100;
+  // ----- Compte à rebours 4-3-2-1-GO -----
+  function runCountdown() {
+    return new Promise(async (resolve, reject) => {
+      countdownAbort = false;
+      overlayEl.classList.remove('hidden');
 
+      const steps = ['4','3','2','1','GO'];
+      let idx = 0;
+
+      function nextStep() {
+        if (countdownAbort) {
+          overlayEl.classList.add('hidden');
+          return reject(new Error('aborted'));
+        }
+        countdownEl.textContent = steps[idx];
+        idx++;
+        if (idx < steps.length) {
+          setTimeout(nextStep, 1000);
+        } else {
+          setTimeout(() => {
+            overlayEl.classList.add('hidden');
+            resolve();
+          }, 400);
+        }
+      }
+
+      nextStep();
+    });
+  }
+
+  // ----- Démarrage / Arrêt -----
+  async function start() {
     // verrouille le mode au départ
     currentMode = modeSelect.value;
     localStorage.setItem('pt_mode', currentMode);
     showPanelFor(currentMode);
     updateHintText();
 
+    ensureAudio();
+    await audioCtx.resume();
+
+    // Compte à rebours
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    setStatus(langSelect.value === 'fr' ? 'prêt...' : 'ready...');
+    try {
+      await runCountdown();
+    } catch {
+      // abort
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      setStatus(langSelect.value === 'fr' ? 'interrompu' : 'aborted');
+      return;
+    }
+
+    // Démarrage effectif après CR
+    isPlaying = true;
+    manualStop = false;
+    setStatus(langSelect.value === 'fr' ? 'lecture' : 'playing');
+    masterGain.gain.value = Number(volEl.value) / 100;
+
     // Point de départ exact des clics
     startTime = audioCtx.currentTime + 0.1;
     nextNoteTime = startTime;
 
-    // Durée / fin auto par mode
+    // Durée / fin auto par mode (relative à startTime)
     sessionEndTime = null;
     lastRandomBpm = null;
     if (currentMode === MODES.ACCEL) {
       const T = Math.max(0, Number(rampEl.value));
-      // ⬇️ Arrêt automatique à la fin de la durée d'accélération
       if (T > 0) sessionEndTime = startTime + T;
     } else if (currentMode === MODES.STEADY) {
       const secs = Math.max(1, Number(steadySecsEl.value));
-      sessionEndTime = audioCtx.currentTime + secs;
+      sessionEndTime = startTime + secs;
     } else if (currentMode === MODES.RANDOM) {
       const secs = Math.max(1, Number(randomSecsEl.value));
-      sessionEndTime = audioCtx.currentTime + secs;
+      sessionEndTime = startTime + secs;
     }
 
     if (lookaheadTimer) clearInterval(lookaheadTimer);
@@ -311,12 +369,22 @@
   }
 
   function stop(finished = false) {
-    if (!audioCtx) return;
+    // Arrêt CR si en cours
+    countdownAbort = true;
+
+    if (!audioCtx && !finished) return;
+
     isPlaying = false;
     const fr = langSelect.value === 'fr';
     setStatus(finished ? (fr ? 'terminé' : 'finished') : (fr ? 'arrêté' : 'stopped'));
     startBtn.disabled = false;
     stopBtn.disabled = true;
+
+    // Si arrêt manuel, annule tout redémarrage planifié
+    if (!finished) {
+      manualStop = true;
+      if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
+    }
 
     if (lookaheadTimer) { clearInterval(lookaheadTimer); lookaheadTimer = null; }
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
@@ -324,6 +392,16 @@
     sessionEndTime = null;
     lastRandomBpm = null;
     updateTimeLeftDisplay();
+
+    // Redémarrage automatique si session finie et opt-in
+    const wantRestart = autoRestartEl.checked;
+    const delaySec = Math.max(1, Number(autoRestartDelayEl.value || 0));
+    if (finished && wantRestart && !manualStop) {
+      autoRestartTimerId = setTimeout(() => {
+        autoRestartTimerId = null;
+        start(); // relance avec compte à rebours
+      }, delaySec * 1000);
+    }
   }
 
   // Boutons
@@ -355,7 +433,7 @@
   [startBpmEl, endBpmEl, steadyBpmEl, minBpmEl, maxBpmEl].forEach(inp => {
     inp?.addEventListener('change', () => { inp.value = clamp(Number(inp.value || 0), 20, 300); });
   });
-  [rampEl, steadySecsEl, randomSecsEl].forEach(inp => {
+  [rampEl, steadySecsEl, randomSecsEl, autoRestartDelayEl].forEach(inp => {
     inp?.addEventListener('change', () => { inp.value = Math.max(0, Number(inp.value || 0)); });
   });
 
