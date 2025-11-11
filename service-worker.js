@@ -1,5 +1,5 @@
 // PhysioTempo — service-worker.js (offline PWA)
-const CACHE_NAME = "physiotempo-v1";
+const CACHE_NAME = "physiotempo-v2"; // ⬅️ bumpé
 const ASSETS = [
   "./",
   "./index.html",
