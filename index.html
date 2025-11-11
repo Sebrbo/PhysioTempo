@@ -27,19 +27,91 @@
     </header>
 
     <section class="card">
+      <!-- Sélecteur de mode -->
+      <div class="mode-row">
+        <label>
+          <span class="i18n" data-key="mode_label">Cadence</span>
+          <select id="mode">
+            <option value="accel" class="i18n" data-key="mode_accel">Cadence progressive</option>
+            <option value="steady" class="i18n" data-key="mode_steady">Cadence fixe (durée)</option>
+            <option value="random" class="i18n" data-key="mode_random">Cadence aléatoire</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Panneaux de paramètres par mode -->
       <div class="grid">
-        <label>
-          <span class="i18n" data-key="start_bpm_label">BPM de départ</span>
-          <input id="startBpm" type="number" min="20" max="300" step="1" value="40" />
-        </label>
-        <label>
-          <span class="i18n" data-key="end_bpm_label">BPM d’arrivée</span>
-          <input id="endBpm" type="number" min="20" max="300" step="1" value="50" />
-        </label>
-        <label>
-          <span class="i18n" data-key="ramp_label">Durée d’accélération (s)</span>
-          <input id="rampSeconds" type="number" min="0" max="3600" step="1" value="120" />
-        </label>
+        <!-- Cadence progressive -->
+        <fieldset class="mode-panel" data-mode="accel">
+          <legend class="i18n" data-key="mode_accel">Cadence progressive</legend>
+
+          <label>
+            <span class="i18n" data-key="start_bpm_label">Cadence de départ (bpm)</span>
+            <div class="with-unit">
+              <input id="startBpm" type="number" min="20" max="300" step="1" value="40" />
+              <span class="unit">bpm</span>
+            </div>
+          </label>
+
+          <label>
+            <span class="i18n" data-key="end_bpm_label">Cadence d’arrivée (bpm)</span>
+            <div class="with-unit">
+              <input id="endBpm" type="number" min="20" max="300" step="1" value="50" />
+              <span class="unit">bpm</span>
+            </div>
+          </label>
+
+          <label>
+            <span class="i18n" data-key="ramp_label">Durée d’accélération (s)</span>
+            <input id="rampSeconds" type="number" min="0" max="3600" step="1" value="120" />
+          </label>
+        </fieldset>
+
+        <!-- Cadence fixe (durée) -->
+        <fieldset class="mode-panel hidden" data-mode="steady">
+          <legend class="i18n" data-key="mode_steady">Cadence fixe (durée)</legend>
+
+          <label>
+            <span class="i18n" data-key="steady_bpm_label">Cadence (bpm)</span>
+            <div class="with-unit">
+              <input id="steadyBpm" type="number" min="20" max="300" step="1" value="40" />
+              <span class="unit">bpm</span>
+            </div>
+          </label>
+
+          <label>
+            <span class="i18n" data-key="steady_secs_label">Durée (s)</span>
+            <input id="steadySeconds" type="number" min="1" max="3600" step="1" value="30" />
+          </label>
+        </fieldset>
+
+        <!-- Cadence aléatoire (durée) -->
+        <fieldset class="mode-panel hidden" data-mode="random">
+          <legend class="i18n" data-key="mode_random">Cadence aléatoire</legend>
+
+          <label>
+            <span class="i18n" data-key="random_min_bpm_label">Cadence min (bpm)</span>
+            <div class="with-unit">
+              <input id="minBpm" type="number" min="20" max="300" step="1" value="20" />
+              <span class="unit">bpm</span>
+            </div>
+          </label>
+
+          <label>
+            <span class="i18n" data-key="random_max_bpm_label">Cadence max (bpm)</span>
+            <div class="with-unit">
+              <input id="maxBpm" type="number" min="20" max="300" step="1" value="30" />
+              <span class="unit">bpm</span>
+            </div>
+          </label>
+
+          <label>
+            <span class="i18n" data-key="random_secs_label">Durée (s)</span>
+            <input id="randomSeconds" type="number" min="1" max="3600" step="1" value="90" />
+          </label>
+        </fieldset>
+
+        <!-- Volume (commun) -->
         <label class="volume">
           <span class="i18n" data-key="volume_label">Volume</span>
           <input id="volume" type="range" min="0" max="100" value="60" />
@@ -61,16 +133,22 @@
 
       <div class="readout">
         <div>
-          <small class="muted i18n" data-key="current_bpm">BPM actuel</small>
+          <small class="muted i18n" data-key="current_bpm">Cadence actuelle (bpm)</small>
           <div id="bpmNow" class="mono big">—</div>
         </div>
         <div>
           <small class="muted i18n" data-key="status">Statut</small>
           <div id="status" class="mono">au repos</div>
         </div>
+        <div>
+          <small class="muted i18n" data-key="time_left">Temps restant</small>
+          <div id="timeLeft" class="mono">—</div>
+        </div>
       </div>
+
       <p class="hint i18n" data-key="hint">
-        Cliquez sur Démarrer. Le tempo accélère linéairement du BPM de départ vers le BPM d’arrivée pendant la durée choisie, puis reste au BPM d’arrivée.
+        Cadence progressive : rampe linéaire jusqu’à la cadence d’arrivée. Cadence fixe (durée) : cadence constante pendant le temps défini.
+        Cadence aléatoire : chaque battement utilise une cadence tirée entre min et max pendant la durée.
       </p>
     </section>
 
