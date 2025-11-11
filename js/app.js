@@ -38,7 +38,13 @@
       current_bpm: "Current cadence (bpm)",
       status: "Status",
       time_left: "Time left",
-      hint: "Progressive cadence: linear ramp to the end cadence. Fixed (timed): constant cadence for the duration. Random: each beat uses a random cadence within range.",
+
+      hint_accel:
+        "Progressive: cadence ramps linearly from start to end, then holds at the end cadence.",
+      hint_steady:
+        "Fixed (timed): constant cadence for the selected duration, then stops automatically.",
+      hint_random:
+        "Random: each beat uses a random cadence between Min and Max for the selected duration."
     },
     fr: {
       language: "Langue",
@@ -65,7 +71,13 @@
       current_bpm: "Cadence actuelle (bpm)",
       status: "Statut",
       time_left: "Temps restant",
-      hint: "Cadence progressive : rampe vers la cadence d’arrivée. Cadence fixe (durée) : cadence constante pendant la durée. Cadence aléatoire : chaque battement utilise une cadence tirée dans l’intervalle.",
+
+      hint_accel:
+        "Cadence progressive : la cadence augmente linéairement de la valeur de départ à la valeur d’arrivée, puis reste à cette cadence.",
+      hint_steady:
+        "Cadence fixe (durée) : cadence constante pendant le temps choisi, puis arrêt automatique.",
+      hint_random:
+        "Cadence aléatoire : chaque battement utilise une cadence tirée entre les valeurs Min et Max pendant la durée choisie."
     }
   };
 
@@ -75,6 +87,7 @@
       const key = el.getAttribute('data-key');
       if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
     });
+    updateHintText(); // mettre à jour l’aide quand on change de langue
   }
 
   // ---------- DOM ----------
@@ -99,36 +112,48 @@
   const presetBtn = $('#preset');
   const langSelect = $('#langSelect');
   const modeSelect = $('#mode');
+  const hintEl = $('#hintText');
 
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
-  // ---------- Local storage ----------
+  // ---------- Local storage & init ----------
+  let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
   const savedLang = localStorage.getItem('pt_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en');
-  const savedMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
 
-  modeSelect.value = savedMode;
+  modeSelect.value = currentMode;
   langSelect.value = savedLang;
+  showPanelFor(currentMode);
   applyI18n(savedLang);
 
+  // ---------- UI bindings ----------
   langSelect.addEventListener('change', () => {
     localStorage.setItem('pt_lang', langSelect.value);
     applyI18n(langSelect.value);
   });
 
-  function showPanelFor(mode) {
-    panels.forEach(p => {
-      p.classList.toggle('hidden', p.getAttribute('data-mode') !== mode);
-    });
-  }
-  showPanelFor(modeSelect.value);
-
   modeSelect.addEventListener('change', () => {
-    localStorage.setItem('pt_mode', modeSelect.value);
-    showPanelFor(modeSelect.value);
-    updateTimeLeftDisplay(); // refresh readout hint
+    currentMode = modeSelect.value;                    // <-- garde le mode choisi
+    localStorage.setItem('pt_mode', currentMode);
+    showPanelFor(currentMode);
+    updateHintText();
+    updateTimeLeftDisplay();
   });
 
-  // ---------- Audio and scheduler ----------
+  function showPanelFor(mode) {
+    panels.forEach(p => p.classList.add('hidden'));
+    const toShow = panels.find(p => p.getAttribute('data-mode') === mode);
+    if (toShow) toShow.classList.remove('hidden');
+  }
+
+  function updateHintText() {
+    const L = i18nDict[langSelect.value];
+    const key =
+      currentMode === MODES.ACCEL ? 'hint_accel' :
+      currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
+    hintEl.textContent = L[key] || '';
+  }
+
+  // ---------- Audio & scheduler ----------
   let audioCtx = null;
   let masterGain = null;
   let isPlaying = false;
@@ -192,8 +217,6 @@
   }
 
   function scheduler() {
-    const mode = modeSelect.value;
-
     // Auto-stop pour modes temporisés
     if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) {
       stop(true); // finished
@@ -204,17 +227,16 @@
       scheduleClick(nextNoteTime);
 
       let interval;
-      if (mode === MODES.ACCEL) {
+      if (currentMode === MODES.ACCEL) {
         const elapsed = nextNoteTime - startTime;
         const bpm = accelBpmAt(elapsed);
         interval = 60.0 / bpm;
         bpmNowEl.textContent = bpm.toFixed(1);
-      } else if (mode === MODES.STEADY) {
+      } else if (currentMode === MODES.STEADY) {
         const bpm = clamp(Number(steadyBpmEl.value), 20, 300);
         interval = 60.0 / bpm;
         bpmNowEl.textContent = bpm.toFixed(1);
       } else { // MODES.RANDOM
-        // Cadence aléatoire à chaque battement, uniforme entre min et max
         let lo = clamp(Number(minBpmEl.value), 20, 300);
         let hi = clamp(Number(maxBpmEl.value), 20, 300);
         if (lo > hi) [lo, hi] = [hi, lo];
@@ -223,10 +245,8 @@
         bpmNowEl.textContent = bpm.toFixed(1);
       }
 
-      // Si une fin de session est définie, ne pas dépasser fortement
       if (sessionEndTime && nextNoteTime + interval > sessionEndTime) {
-        // on planifie quand même ce dernier click, puis on sort
-        nextNoteTime = sessionEndTime + 1; // force sortie de la boucle
+        nextNoteTime = sessionEndTime + 1; // force sortie
       } else {
         nextNoteTime += interval;
       }
@@ -239,7 +259,6 @@
       timeLeftEl.textContent = '—';
       return;
     }
-    // Temps restant
     updateTimeLeftDisplay();
     rafId = requestAnimationFrame(updateReadout);
   }
@@ -260,18 +279,22 @@
     stopBtn.disabled = false;
     masterGain.gain.value = Number(volEl.value) / 100;
 
-    // Durées par mode
+    // verrouille le mode choisi au moment du départ
+    currentMode = modeSelect.value;
+    localStorage.setItem('pt_mode', currentMode);
+    showPanelFor(currentMode);
+    updateHintText();
+
+    // Durée selon mode
     sessionEndTime = null;
     lastRandomBpm = null;
-
-    const mode = modeSelect.value;
-    if (mode === MODES.STEADY) {
+    if (currentMode === MODES.STEADY) {
       const secs = Math.max(1, Number(steadySecsEl.value));
       sessionEndTime = audioCtx.currentTime + secs;
-    } else if (mode === MODES.RANDOM) {
+    } else if (currentMode === MODES.RANDOM) {
       const secs = Math.max(1, Number(randomSecsEl.value));
       sessionEndTime = audioCtx.currentTime + secs;
-    } // ACCEL : pas de fin auto (illimité)
+    } // ACCEL : pas de fin auto
 
     startTime = audioCtx.currentTime + 0.1;
     nextNoteTime = startTime;
@@ -297,7 +320,7 @@
     updateTimeLeftDisplay();
   }
 
-  // UI bindings
+  // Boutons
   startBtn.addEventListener('click', start);
   stopBtn.addEventListener('click', () => stop(false));
 
@@ -306,8 +329,11 @@
   presetBtn.addEventListener('click', () => {
     // Préréglage pour la Cadence progressive
     modeSelect.value = MODES.ACCEL;
-    localStorage.setItem('pt_mode', modeSelect.value);
-    showPanelFor(modeSelect.value);
+    currentMode = MODES.ACCEL;
+    localStorage.setItem('pt_mode', currentMode);
+    showPanelFor(currentMode);
+    updateHintText();
+
     startBpmEl.value = 40;
     endBpmEl.value = 50;
     rampEl.value = 120;
@@ -328,5 +354,7 @@
     inp?.addEventListener('change', () => { inp.value = Math.max(0, Number(inp.value || 0)); });
   });
 
+  // Première aide
+  updateHintText();
   setStatus('au repos');
 })();
