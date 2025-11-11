@@ -116,6 +116,21 @@
           <span class="i18n" data-key="volume_label">Volume</span>
           <input id="volume" type="range" min="0" max="100" value="60" />
         </label>
+
+        <!-- Options démarrage / cycles (communes) -->
+        <fieldset class="mode-panel common">
+          <legend class="i18n" data-key="start_options">Démarrage & cycles</legend>
+
+          <label class="row">
+            <input id="autoRestart" type="checkbox" />
+            <span class="i18n" data-key="auto_restart_label">Redémarrage automatique</span>
+          </label>
+
+          <label>
+            <span class="i18n" data-key="auto_restart_delay_label">Délai de redémarrage (s)</span>
+            <input id="autoRestartDelay" type="number" min="1" max="3600" step="1" value="5" />
+          </label>
+        </fieldset>
       </div>
 
       <div class="buttons">
@@ -146,16 +161,19 @@
         </div>
       </div>
 
-      <!-- Texte d’aide qui change selon le mode -->
-      <p class="hint" id="hintText">
-        <!-- sera rempli dynamiquement par app.js -->
-      </p>
+      <!-- Texte d’aide dynamique -->
+      <p class="hint" id="hintText"></p>
     </section>
 
     <footer class="foot">
       <span class="muted">&copy; 2025 PhysioTempo</span>
     </footer>
   </main>
+
+  <!-- Overlay compte à rebours -->
+  <div id="overlay" class="overlay hidden">
+    <div id="countdown" class="countdown">4</div>
+  </div>
 
   <script src="js/app.js"></script>
 
