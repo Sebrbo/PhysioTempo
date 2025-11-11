@@ -1,8 +1,8 @@
 /*!
- * PhysioTempo — rehab cadence trainer with countdown & auto-restart
+ * PhysioTempo — cadence trainer with countdown & auto-restart
  * (c) 2025 Sebrbo and contributors
- * License (code): PolyForm Noncommercial 1.0.0 — see LICENSE
- * Assets: CC BY-NC 4.0 — see LICENSE-CC-BY-NC-4.0.md
+ * License (code): PolyForm Noncommercial 1.0.0
+ * Assets: CC BY-NC 4.0
  * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 */
 (() => {
@@ -85,17 +85,9 @@
     }
   };
 
-  function applyI18n(lang) {
-    document.documentElement.lang = lang;
-    document.querySelectorAll('.i18n').forEach(el => {
-      const key = el.getAttribute('data-key');
-      if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
-    });
-    updateHintText();
-  }
-
-  // ---------- DOM ----------
   const $ = sel => document.querySelector(sel);
+
+  // ---------- DOM refs ----------
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
@@ -124,17 +116,57 @@
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
 
-  // Tous les panneaux spécifiques + le panneau « commun »
+  // Panneaux de mode + panneau commun
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
-  // ---------- Local storage & init ----------
-  let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
-  const savedLang = localStorage.getItem('pt_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en');
+  // ---------- State ----------
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+  let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
+  let audioCtx = null;
+  let masterGain = null;
+  let isPlaying = false;
+  let startTime = 0;          // moment de départ des clics
+  let nextNoteTime = 0;       // prochaine planification
+  let lookaheadTimer = null;
+  let rafId = null;
+  let sessionEndTime = null;  // fin auto
+  let lastRandomBpm = null;
+
+  // Countdown & auto-restart
+  let countdownAbort = false;
+  let autoRestartTimerId = null;
+  let manualStop = false;
+
+  // Scheduler params
+  const scheduleAheadTime = 0.15; // s
+  const lookahead = 25;           // ms
+  const clickHz = 880;
+  const clickLen = 0.03;
+
+  // ---------- Init ----------
+  const savedLang = localStorage.getItem('pt_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en');
   modeSelect.value = currentMode;
   langSelect.value = savedLang;
   showPanelFor(currentMode);
   applyI18n(savedLang);
+
+  // ---------- i18n helpers ----------
+  function applyI18n(lang) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('.i18n').forEach(el => {
+      const key = el.getAttribute('data-key');
+      if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
+    });
+    updateHintText();
+  }
+  function updateHintText() {
+    const L = i18nDict[langSelect.value];
+    const key =
+      currentMode === MODES.ACCEL ? 'hint_accel' :
+      currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
+    hintEl.textContent = L[key] || '';
+  }
 
   // ---------- UI bindings ----------
   langSelect.addEventListener('change', () => {
@@ -150,46 +182,18 @@
     updateTimeLeftDisplay();
   });
 
-  // ⬇️ Correctif : ne jamais masquer le panneau « commun »
+  // Ne jamais masquer le panneau « commun »
   function showPanelFor(mode) {
     panels.forEach(p => {
       if (p.classList.contains('common')) {
-        p.classList.remove('hidden');                 // toujours visible
+        p.classList.remove('hidden');
       } else {
         p.classList.toggle('hidden', p.getAttribute('data-mode') !== mode);
       }
     });
   }
 
-  function updateHintText() {
-    const L = i18nDict[langSelect.value];
-    const key =
-      currentMode === MODES.ACCEL ? 'hint_accel' :
-      currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
-    hintEl.textContent = L[key] || '';
-  }
-
-  // ---------- Audio & scheduler ----------
-  let audioCtx = null;
-  let masterGain = null;
-  let isPlaying = false;
-  let startTime = 0;
-  let nextNoteTime = 0;
-  let lookaheadTimer = null;
-  let rafId = null;
-  let sessionEndTime = null;
-  let lastRandomBpm = null;
-
-  // Countdown & auto-restart
-  let countdownAbort = false;
-  let autoRestartTimerId = null;
-  let manualStop = false;
-
-  const scheduleAheadTime = 0.15; // seconds
-  const lookahead = 25;           // ms
-  const clickHz = 880;
-  const clickLen = 0.03;
-
+  // ---------- Audio ----------
   function ensureAudio() {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -198,22 +202,11 @@
       masterGain.connect(audioCtx.destination);
     }
   }
-
-  function setStatus(text) { statusEl.textContent = text; }
-  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
-
-  function secondsToMMSS(s) {
-    s = Math.max(0, Math.floor(s));
-    const m = Math.floor(s / 60);
-    const ss = (s % 60).toString().padStart(2, '0');
-    return `${m}:${ss}`;
-  }
-
   function scheduleClick(time) {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.frequency.value = clickHz;
-    const g = masterGain.gain.value;
+    const g = Math.max(0.0001, masterGain.gain.value);
     gain.gain.setValueAtTime(0, time);
     gain.gain.linearRampToValueAtTime(g, time + 0.002);
     gain.gain.exponentialRampToValueAtTime(Math.max(1e-4, g * 0.001), time + clickLen);
@@ -224,23 +217,24 @@
     osc.stop(time + clickLen + 0.02);
   }
 
-  // --- Cadence progressive (linéaire) ---
+  // ---------- Cadence progressive ----------
   function accelBpmAt(elapsed) {
-    const b0 = clamp(Number(startBpmEl.value), 20, 300);
-    go
-    const b1 = clamp(Number(endBpmEl.value), 20, 300);
-    const T = Math.max(0, Number(rampEl.value));
-    if (T <= 0) return b1;
-    if (elapsed < 0) elapsed = 0;
+    // elapsed en secondes depuis startTime
+    let b0 = clamp(Number(startBpmEl.value || 0), 20, 300);
+    let b1 = clamp(Number(endBpmEl.value   || 0), 20, 300);
+    const T = Math.max(0, Number(rampEl.value || 0));
+    if (T <= 0) return b1;              // saut instantané
+    if (elapsed <= 0) return b0;
     if (elapsed >= T) return b1;
     const k = (b1 - b0) / T;
     return b0 + k * elapsed;
   }
 
+  // ---------- Scheduler ----------
   function scheduler() {
     // Arrêt auto
     if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) {
-      stop(true); // finished
+      stop(true);
       return;
     }
 
@@ -249,23 +243,21 @@
 
       let interval;
       if (currentMode === MODES.ACCEL) {
-        const elapsed = nextNoteTime - startTime;
-        const bpm = accelBpmAt(elapsed);
+        const elapsed = Math.max(0, nextNoteTime - startTime);
+        const bpm = Math.max(1, accelBpmAt(elapsed));
         interval = 60.0 / bpm;
-        bpmNowEl.textContent = bpm.toFixed(1);
       } else if (currentMode === MODES.STEADY) {
         const bpm = clamp(Number(steadyBpmEl.value), 20, 300);
         interval = 60.0 / bpm;
-        bpmNowEl.textContent = bpm.toFixed(1);
-      } else { // MODES.RANDOM
+      } else { // RANDOM
         let lo = clamp(Number(minBpmEl.value), 20, 300);
         let hi = clamp(Number(maxBpmEl.value), 20, 300);
         if (lo > hi) [lo, hi] = [hi, lo];
         const bpm = lastRandomBpm = lo + Math.random() * (hi - lo);
         interval = 60.0 / bpm;
-        bpmNowEl.textContent = bpm.toFixed(1);
       }
 
+      // Évite de dépasser franchement la fin
       if (sessionEndTime && nextNoteTime + interval > sessionEndTime) {
         nextNoteTime = sessionEndTime + 1; // force sortie
       } else {
@@ -280,50 +272,55 @@
       timeLeftEl.textContent = '—';
       return;
     }
+    // Affichage cadence actuelle basé sur le temps réel
+    const now = audioCtx.currentTime;
+    if (currentMode === MODES.ACCEL) {
+      const elapsed = Math.max(0, now - startTime);
+      const bpm = Math.max(1, accelBpmAt(elapsed));
+      bpmNowEl.textContent = bpm.toFixed(1);
+    } else if (currentMode === MODES.STEADY) {
+      bpmNowEl.textContent = clamp(Number(steadyBpmEl.value), 20, 300).toFixed(1);
+    } else {
+      bpmNowEl.textContent = lastRandomBpm ? lastRandomBpm.toFixed(1) : '—';
+    }
+
     updateTimeLeftDisplay();
     rafId = requestAnimationFrame(updateReadout);
   }
 
+  function secondsToMMSS(s) {
+    s = Math.max(0, Math.floor(s));
+    const m = Math.floor(s / 60);
+    const ss = (s % 60).toString().padStart(2, '0');
+    return `${m}:${ss}`;
+  }
   function updateTimeLeftDisplay() {
     if (!sessionEndTime) { timeLeftEl.textContent = '—'; return; }
     const now = audioCtx ? audioCtx.currentTime : 0;
     const left = sessionEndTime - now;
     timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
   }
+  function setStatus(t) { statusEl.textContent = t; }
 
-  // ----- Compte à rebours 4-3-2-1-GO -----
+  // ---------- Compte à rebours ----------
   function runCountdown() {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       countdownAbort = false;
       overlayEl.classList.remove('hidden');
-
       const steps = ['4','3','2','1','GO'];
       let idx = 0;
-
-      function nextStep() {
-        if (countdownAbort) {
-          overlayEl.classList.add('hidden');
-          return reject(new Error('aborted'));
-        }
+      (function next() {
+        if (countdownAbort) { overlayEl.classList.add('hidden'); return reject(new Error('aborted')); }
         countdownEl.textContent = steps[idx];
         idx++;
-        if (idx < steps.length) {
-          setTimeout(nextStep, 1000);
-        } else {
-          setTimeout(() => {
-            overlayEl.classList.add('hidden');
-            resolve();
-          }, 400);
-        }
-      }
-
-      nextStep();
+        if (idx < steps.length) setTimeout(next, 1000);
+        else setTimeout(() => { overlayEl.classList.add('hidden'); resolve(); }, 400);
+      })();
     });
   }
 
-  // ----- Démarrage / Arrêt -----
+  // ---------- Start / Stop ----------
   async function start() {
-    // verrouille le mode au départ
     currentMode = modeSelect.value;
     localStorage.setItem('pt_mode', currentMode);
     showPanelFor(currentMode);
@@ -333,50 +330,38 @@
     await audioCtx.resume();
 
     // Compte à rebours
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
+    startBtn.disabled = true; stopBtn.disabled = false;
     setStatus(langSelect.value === 'fr' ? 'prêt...' : 'ready...');
-    try {
-      await runCountdown();
-    } catch {
-      // abort
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      setStatus(langSelect.value === 'fr' ? 'interrompu' : 'aborted');
-      return;
-    }
+    try { await runCountdown(); }
+    catch { startBtn.disabled = false; stopBtn.disabled = true; setStatus(langSelect.value === 'fr' ? 'interrompu' : 'aborted'); return; }
 
-    // Démarrage effectif après CR
-    isPlaying = true;
-    manualStop = false;
+    isPlaying = true; manualStop = false;
     setStatus(langSelect.value === 'fr' ? 'lecture' : 'playing');
     masterGain.gain.value = Number(volEl.value) / 100;
 
-    // Point de départ exact des clics
+    // Point de départ exact
     startTime = audioCtx.currentTime + 0.1;
     nextNoteTime = startTime;
 
-    // Durée / fin auto par mode (relative à startTime)
-    sessionEndTime = null;
-    lastRandomBpm = null;
+    // Fin automatique par mode (relative à startTime)
+    sessionEndTime = null; lastRandomBpm = null;
     if (currentMode === MODES.ACCEL) {
       const T = Math.max(0, Number(rampEl.value));
       if (T > 0) sessionEndTime = startTime + T;
     } else if (currentMode === MODES.STEADY) {
       const secs = Math.max(1, Number(steadySecsEl.value));
       sessionEndTime = startTime + secs;
-    } else if (currentMode === MODES.RANDOM) {
+    } else {
       const secs = Math.max(1, Number(randomSecsEl.value));
       sessionEndTime = startTime + secs;
     }
 
     if (lookaheadTimer) clearInterval(lookaheadTimer);
-    lookaheadTimer = setInterval(scheduler, 25);
+    lookaheadTimer = setInterval(scheduler, lookahead);
     updateReadout();
   }
 
   function stop(finished = false) {
-    // Arrêt CR si en cours
     countdownAbort = true;
 
     if (!audioCtx && !finished) return;
@@ -384,10 +369,8 @@
     isPlaying = false;
     const fr = langSelect.value === 'fr';
     setStatus(finished ? (fr ? 'terminé' : 'finished') : (fr ? 'arrêté' : 'stopped'));
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    startBtn.disabled = false; stopBtn.disabled = true;
 
-    // Si arrêt manuel, annule tout redémarrage planifié
     if (!finished) {
       manualStop = true;
       if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
@@ -396,25 +379,23 @@
     if (lookaheadTimer) { clearInterval(lookaheadTimer); lookaheadTimer = null; }
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     bpmNowEl.textContent = '—';
-    sessionEndTime = null;
-    lastRandomBpm = null;
+    sessionEndTime = null; lastRandomBpm = null;
     updateTimeLeftDisplay();
 
-    // Redémarrage automatique si session finie et opt-in
+    // Redémarrage auto ?
     const wantRestart = autoRestartEl.checked;
     const delaySec = Math.max(1, Number(autoRestartDelayEl.value || 0));
     if (finished && wantRestart && !manualStop) {
       autoRestartTimerId = setTimeout(() => {
         autoRestartTimerId = null;
-        start(); // relance avec compte à rebours
+        start();
       }, delaySec * 1000);
     }
   }
 
-  // Boutons
+  // ---------- Events ----------
   startBtn.addEventListener('click', start);
   stopBtn.addEventListener('click', () => stop(false));
-
   volEl.addEventListener('input', () => { if (masterGain) masterGain.gain.value = Number(volEl.value) / 100; });
 
   presetBtn.addEventListener('click', () => {
@@ -423,17 +404,11 @@
     localStorage.setItem('pt_mode', currentMode);
     showPanelFor(currentMode);
     updateHintText();
-
-    startBpmEl.value = 40;
-    endBpmEl.value = 50;
-    rampEl.value = 120;
+    startBpmEl.value = 40; endBpmEl.value = 50; rampEl.value = 120;
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') {
-      e.preventDefault();
-      if (startBtn.disabled) stop(); else start();
-    }
+    if (e.code === 'Space') { e.preventDefault(); if (startBtn.disabled) stop(); else start(); }
   });
 
   // Validation simple
