@@ -124,6 +124,7 @@
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
 
+  // Tous les panneaux spécifiques + le panneau « commun »
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
   // ---------- Local storage & init ----------
@@ -149,10 +150,15 @@
     updateTimeLeftDisplay();
   });
 
+  // ⬇️ Correctif : ne jamais masquer le panneau « commun »
   function showPanelFor(mode) {
-    panels.forEach(p => p.classList.add('hidden'));
-    const toShow = panels.find(p => p.getAttribute('data-mode') === mode);
-    if (toShow) toShow.classList.remove('hidden');
+    panels.forEach(p => {
+      if (p.classList.contains('common')) {
+        p.classList.remove('hidden');                 // toujours visible
+      } else {
+        p.classList.toggle('hidden', p.getAttribute('data-mode') !== mode);
+      }
+    });
   }
 
   function updateHintText() {
@@ -221,6 +227,7 @@
   // --- Cadence progressive (linéaire) ---
   function accelBpmAt(elapsed) {
     const b0 = clamp(Number(startBpmEl.value), 20, 300);
+    go
     const b1 = clamp(Number(endBpmEl.value), 20, 300);
     const T = Math.max(0, Number(rampEl.value));
     if (T <= 0) return b1;
@@ -364,7 +371,7 @@
     }
 
     if (lookaheadTimer) clearInterval(lookaheadTimer);
-    lookaheadTimer = setInterval(scheduler, lookahead);
+    lookaheadTimer = setInterval(scheduler, 25);
     updateReadout();
   }
 
