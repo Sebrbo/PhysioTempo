@@ -1,5 +1,5 @@
 // PhysioTempo — service-worker.js (offline PWA)
-const CACHE_NAME = "physiotempo-v3"; // ⬅️ bump
+const CACHE_NAME = "physiotempo-v4"; // bump
 const ASSETS = [
   "./",
   "./index.html",
@@ -27,7 +27,6 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
 
-  // Network-first pour les navigations (HTML)
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
@@ -41,7 +40,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first pour les assets statiques
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
