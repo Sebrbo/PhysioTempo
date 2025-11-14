@@ -1,5 +1,5 @@
 /*!
- * PhysioTempo — cadence trainer with countdown & auto-restart
+ * PhysioTempo — cadence trainer with countdown, auto-restart & rest control
  * (c) 2025 Sebrbo and contributors
  * License (code): PolyForm Noncommercial 1.0.0
  * Assets: CC BY-NC 4.0
@@ -116,7 +116,6 @@
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
 
-  // Panneaux de mode + panneau commun
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
   // ---------- State ----------
@@ -130,13 +129,15 @@
   let nextNoteTime = 0;       // prochaine planification
   let lookaheadTimer = null;
   let rafId = null;
-  let sessionEndTime = null;  // fin auto
+  let sessionEndTime = null;  // fin auto session
   let lastRandomBpm = null;
 
-  // Countdown & auto-restart
+  // Countdown, auto-restart & repos
   let countdownAbort = false;
   let autoRestartTimerId = null;
   let manualStop = false;
+  let restEndTime = null;     // fin de la phase de repos
+  let restRafId = null;       // animation frame pendant repos
 
   // Scheduler params
   const scheduleAheadTime = 0.15; // s
@@ -257,7 +258,7 @@
         interval = 60.0 / bpm;
       }
 
-      // Évite de dépasser franchement la fin
+      // Évite de dépasser la fin de session
       if (sessionEndTime && nextNoteTime + interval > sessionEndTime) {
         nextNoteTime = sessionEndTime + 1; // force sortie
       } else {
@@ -269,7 +270,7 @@
   function updateReadout() {
     if (!isPlaying) {
       bpmNowEl.textContent = '—';
-      timeLeftEl.textContent = '—';
+      updateTimeLeftDisplay(); // peut afficher le compte à rebours de repos
       return;
     }
     // Affichage cadence actuelle basé sur le temps réel
@@ -295,12 +296,32 @@
     return `${m}:${ss}`;
   }
   function updateTimeLeftDisplay() {
-    if (!sessionEndTime) { timeLeftEl.textContent = '—'; return; }
-    const now = audioCtx ? audioCtx.currentTime : 0;
-    const left = sessionEndTime - now;
-    timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
+    if (sessionEndTime) {
+      const left = sessionEndTime - (audioCtx ? audioCtx.currentTime : 0);
+      timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
+    } else if (restEndTime) {
+      const left = restEndTime - (audioCtx ? audioCtx.currentTime : 0);
+      timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
+    } else {
+      timeLeftEl.textContent = '—';
+    }
   }
-  function setStatus(t) { statusEl.textContent = t; }
+
+  // Raf de repos (pour mettre à jour "Temps restant")
+  function startRestUI() {
+    if (restRafId) cancelAnimationFrame(restRafId);
+    const loop = () => {
+      if (!restEndTime) { restRafId = null; return; }
+      updateTimeLeftDisplay();
+      restRafId = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+  function stopRestUI() {
+    if (restRafId) { cancelAnimationFrame(restRafId); restRafId = null; }
+    restEndTime = null;
+    updateTimeLeftDisplay();
+  }
 
   // ---------- Compte à rebours ----------
   function runCountdown() {
@@ -321,6 +342,10 @@
 
   // ---------- Start / Stop ----------
   async function start() {
+    // Si un redémarrage était planifié, on l'annule (l'utilisateur force le départ)
+    if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
+    stopRestUI();
+
     currentMode = modeSelect.value;
     localStorage.setItem('pt_mode', currentMode);
     showPanelFor(currentMode);
@@ -330,7 +355,8 @@
     await audioCtx.resume();
 
     // Compte à rebours
-    startBtn.disabled = true; stopBtn.disabled = false;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
     setStatus(langSelect.value === 'fr' ? 'prêt...' : 'ready...');
     try { await runCountdown(); }
     catch { startBtn.disabled = false; stopBtn.disabled = true; setStatus(langSelect.value === 'fr' ? 'interrompu' : 'aborted'); return; }
@@ -362,40 +388,66 @@
   }
 
   function stop(finished = false) {
+    // Arrêt CR si en cours
     countdownAbort = true;
 
     if (!audioCtx && !finished) return;
 
     isPlaying = false;
+
     const fr = langSelect.value === 'fr';
     setStatus(finished ? (fr ? 'terminé' : 'finished') : (fr ? 'arrêté' : 'stopped'));
-    startBtn.disabled = false; stopBtn.disabled = true;
 
-    if (!finished) {
+    // Par défaut : Start activé, Stop désactivé...
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+
+    // ...sauf si on passe en "repos" (auto-restart activé) : laisser STOP actif pour annuler
+    const wantRestart = autoRestartEl.checked;
+    const delaySec = Math.max(1, Number(autoRestartDelayEl.value || 0));
+    if (finished && wantRestart && !manualStop) {
+      // UI de repos : STOP actif pour annuler, START actif pour repartir tout de suite
+      stopBtn.disabled = false;
+      startBtn.disabled = false;
+
+      // Statut + minuterie de repos
+      setStatus(fr ? `repos — redémarrage dans ${delaySec}s` : `rest — restart in ${delaySec}s`);
+      if (audioCtx) {
+        restEndTime = audioCtx.currentTime + delaySec;
+        startRestUI();
+      }
+
+      // Timer réel de redémarrage
+      autoRestartTimerId = setTimeout(() => {
+        autoRestartTimerId = null;
+        stopRestUI();
+        start(); // relance (avec compte à rebours)
+      }, delaySec * 1000);
+    } else {
+      // Pas de repos planifié
       manualStop = true;
       if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
+      stopRestUI();
     }
 
     if (lookaheadTimer) { clearInterval(lookaheadTimer); lookaheadTimer = null; }
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     bpmNowEl.textContent = '—';
-    sessionEndTime = null; lastRandomBpm = null;
+    sessionEndTime = null;
+    lastRandomBpm = null;
     updateTimeLeftDisplay();
-
-    // Redémarrage auto ?
-    const wantRestart = autoRestartEl.checked;
-    const delaySec = Math.max(1, Number(autoRestartDelayEl.value || 0));
-    if (finished && wantRestart && !manualStop) {
-      autoRestartTimerId = setTimeout(() => {
-        autoRestartTimerId = null;
-        start();
-      }, delaySec * 1000);
-    }
   }
 
   // ---------- Events ----------
   startBtn.addEventListener('click', start);
-  stopBtn.addEventListener('click', () => stop(false));
+  stopBtn.addEventListener('click', () => {
+    // Si on est en repos (auto-restart en attente), ce stop annule la relance et revient à l'état "au repos"
+    manualStop = true;
+    if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
+    stopRestUI();
+    stop(false);
+  });
+
   volEl.addEventListener('input', () => { if (masterGain) masterGain.gain.value = Number(volEl.value) / 100; });
 
   presetBtn.addEventListener('click', () => {
@@ -419,7 +471,7 @@
     inp?.addEventListener('change', () => { inp.value = Math.max(0, Number(inp.value || 0)); });
   });
 
-  // Première aide
+  // Aide initiale
   updateHintText();
   setStatus('au repos');
 })();
