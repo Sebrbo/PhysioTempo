@@ -1,5 +1,5 @@
 /*!
- * PhysioTempo — cadence trainer with countdown, auto-restart & rest control
+ * PhysioTempo — cadence trainer with countdown, auto-restart & proper countdown label
  * (c) 2025 Sebrbo and contributors
  * License (code): PolyForm Noncommercial 1.0.0
  * Assets: CC BY-NC 4.0
@@ -40,6 +40,7 @@
       current_bpm: "Current cadence (bpm)",
       status: "Status",
       time_left: "Time left",
+      countdown_suffix: " (countdown)",
 
       hint_accel:
         "Progressive: cadence ramps linearly from start to end, then stops automatically.",
@@ -75,6 +76,7 @@
       current_bpm: "Cadence actuelle (bpm)",
       status: "Statut",
       time_left: "Temps restant",
+      countdown_suffix: " (compte à rebours)",
 
       hint_accel:
         "Cadence progressive : la cadence augmente linéairement de la valeur de départ à la valeur d’arrivée, puis s’arrête automatiquement.",
@@ -115,6 +117,9 @@
 
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
+
+  // petit accès direct au label "Temps restant"
+  const timeLeftLabelEl = document.querySelector('small.i18n[data-key="time_left"]');
 
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
@@ -160,6 +165,8 @@
       if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
     });
     updateHintText();
+    // ajuste l'étiquette selon l'état (compte à rebours actif ?)
+    setTimeLeftLabel(isCountdownActive());
   }
   function updateHintText() {
     const L = i18nDict[langSelect.value];
@@ -167,6 +174,17 @@
       currentMode === MODES.ACCEL ? 'hint_accel' :
       currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
     hintEl.textContent = L[key] || '';
+  }
+  function setTimeLeftLabel(isCountdown) {
+    const L = i18nDict[langSelect.value];
+    if (timeLeftLabelEl) {
+      timeLeftLabelEl.textContent = L.time_left + (isCountdown ? (L.countdown_suffix || "") : "");
+    }
+  }
+  function isCountdownActive() {
+    // actif si overlay affiché (avant départ) OU pendant repos (auto-restart en attente)
+    const overlayActive = !overlayEl.classList.contains('hidden');
+    return overlayActive || !!restEndTime;
   }
 
   // ---------- UI bindings ----------
@@ -299,11 +317,14 @@
     if (sessionEndTime) {
       const left = sessionEndTime - (audioCtx ? audioCtx.currentTime : 0);
       timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
+      setTimeLeftLabel(false);
     } else if (restEndTime) {
       const left = restEndTime - (audioCtx ? audioCtx.currentTime : 0);
       timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
+      setTimeLeftLabel(true); // afficher "(compte à rebours)"
     } else {
       timeLeftEl.textContent = '—';
+      setTimeLeftLabel(false);
     }
   }
 
@@ -328,14 +349,16 @@
     return new Promise((resolve, reject) => {
       countdownAbort = false;
       overlayEl.classList.remove('hidden');
+      setTimeLeftLabel(true); // montrer "(compte à rebours)" pendant le CR
+
       const steps = ['4','3','2','1','GO'];
       let idx = 0;
       (function next() {
-        if (countdownAbort) { overlayEl.classList.add('hidden'); return reject(new Error('aborted')); }
+        if (countdownAbort) { overlayEl.classList.add('hidden'); setTimeLeftLabel(!!restEndTime); return reject(new Error('aborted')); }
         countdownEl.textContent = steps[idx];
         idx++;
         if (idx < steps.length) setTimeout(next, 1000);
-        else setTimeout(() => { overlayEl.classList.add('hidden'); resolve(); }, 400);
+        else setTimeout(() => { overlayEl.classList.add('hidden'); setTimeLeftLabel(!!restEndTime); resolve(); }, 400);
       })();
     });
   }
@@ -411,10 +434,11 @@
       startBtn.disabled = false;
 
       // Statut + minuterie de repos
-      setStatus(fr ? `repos — redémarrage dans ${delaySec}s` : `rest — restart in ${delaySec}s`);
+      setStatus(fr ? `compte à rebours avant redémarrage` : `countdown before restart`);
       if (audioCtx) {
         restEndTime = audioCtx.currentTime + delaySec;
         startRestUI();
+        setTimeLeftLabel(true); // indiquer "(compte à rebours)"
       }
 
       // Timer réel de redémarrage
@@ -428,6 +452,7 @@
       manualStop = true;
       if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
       stopRestUI();
+      setTimeLeftLabel(false);
     }
 
     if (lookaheadTimer) { clearInterval(lookaheadTimer); lookaheadTimer = null; }
@@ -471,7 +496,8 @@
     inp?.addEventListener('change', () => { inp.value = Math.max(0, Number(inp.value || 0)); });
   });
 
-  // Aide initiale
+  // Aide initiale + label
   updateHintText();
   setStatus('au repos');
+  setTimeLeftLabel(false);
 })();
