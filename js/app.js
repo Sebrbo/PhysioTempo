@@ -1,17 +1,20 @@
 /*!
- * PhysioTempo — countdown sound (beep/voice), robust, auto-restart
- * Build: 2025-11-17 v9
+ * PhysioTempo — robust build with iOS audio unlock + reliable voice + fallback
+ * Build: 2025-11-17 v10
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
   'use strict';
 
+  // ---------- Modes ----------
   const MODES = { ACCEL: 'accel', STEADY: 'steady', RANDOM: 'random' };
+
+  // ---------- Helpers ----------
   const $ = (sel) => document.querySelector(sel);
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const safeNum = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
 
-  // -------- i18n --------
+  // ---------- i18n ----------
   const i18nDict = {
     en: {
       language: "Language",
@@ -20,7 +23,7 @@
       mode_steady: "Fixed cadence (timed)",
       mode_random: "Random cadence",
       start_bpm_label: "Start cadence (bpm)",
-      end_bpm_label: "End cadence (bpm)",
+      end_bpm_label: "Ramp end (bpm)",
       ramp_label: "Ramp duration (s)",
       steady_bpm_label: "Cadence (bpm)",
       steady_secs_label: "Duration (s)",
@@ -89,20 +92,24 @@
     }
   };
 
-  // -------- DOM --------
+  // ---------- DOM refs (null-safe) ----------
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
+
   const steadyBpmEl  = $('#steadyBpm');
   const steadySecsEl = $('#steadySeconds');
+
   const minBpmEl     = $('#minBpm');
   const maxBpmEl     = $('#maxBpm');
   const randomSecsEl = $('#randomSeconds');
+
   const volEl    = $('#volume');
   const bpmNowEl = $('#bpmNow');
   const statusEl = $('#status');
   const timeLeftEl = $('#timeLeft');
   const timeLeftLabelEl = document.querySelector('small.i18n[data-key="time_left"]');
+
   const startBtn = $('#startBtn');
   const stopBtn  = $('#stopBtn');
   const presetBtn = $('#preset');
@@ -112,15 +119,14 @@
 
   const autoRestartEl = $('#autoRestart');
   const autoRestartDelayEl = $('#autoRestartDelay');
-
-  const countdownSoundEl = $('#countdownSound');  // <— NEW
+  const countdownSoundEl = $('#countdownSound');  // optionnel
 
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
 
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
-  // -------- State --------
+  // ---------- State ----------
   let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
   let audioCtx = null, masterGain = null;
   let isPlaying = false;
@@ -133,12 +139,15 @@
   let manualStop = false;
   let restEndTime = null, restRafId = null;
 
+  let audioUnlocked = false;   // iOS unlock
+  let lastCdStep = -1;         // anti-doublon CR
+
   const scheduleAheadTime = 0.15; // s
   const lookahead = 25;           // ms
   const clickHz = 880;
   const clickLen = 0.03;
 
-  // -------- Init --------
+  // ---------- Init ----------
   const savedLang = localStorage.getItem('pt_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en');
   if (modeSelect) modeSelect.value = currentMode;
   if (langSelect) langSelect.value = savedLang;
@@ -146,11 +155,11 @@
   applyI18n(savedLang);
   setStatus('au repos');
 
-  // Préférence son du CR
+  // Préférence son compte à rebours
   const savedCd = localStorage.getItem('pt_cd_sound') || 'beep';
   if (countdownSoundEl) countdownSoundEl.value = savedCd;
 
-  // -------- i18n helpers --------
+  // ---------- i18n helpers ----------
   function L() { return i18nDict[langSelect?.value || savedLang]; }
   function applyI18n(lang) {
     document.documentElement.lang = lang;
@@ -163,8 +172,8 @@
   }
   function updateHintText() {
     if (!hintEl) return;
-    const key = currentMode === MODES.ACCEL ? 'hint_accel' :
-                currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
+    const key = currentMode === MODES.ACCEL ? 'hint_accel'
+              : currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
     hintEl.textContent = L()[key] || '';
   }
   function setTimeLeftLabel(isCountdown) {
@@ -176,7 +185,7 @@
     return overlayActive || !!restEndTime;
   }
 
-  // -------- UI events --------
+  // ---------- UI events ----------
   langSelect?.addEventListener('change', () => {
     localStorage.setItem('pt_lang', langSelect.value);
     applyI18n(langSelect.value);
@@ -201,7 +210,7 @@
     });
   }
 
-  // -------- Audio --------
+  // ---------- Audio ----------
   function ensureAudio() {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -210,6 +219,19 @@
       masterGain.connect(audioCtx.destination);
     }
   }
+  // iOS: déverrouille l’audio après geste utilisateur
+  function unlockAudioOnce() {
+    if (audioUnlocked) return;
+    ensureAudio();
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    osc.connect(g); g.connect(masterGain);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.01);
+    audioUnlocked = true;
+  }
+
   function scheduleClick(time) {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -223,12 +245,12 @@
     osc.start(time); osc.stop(time + clickLen + 0.02);
   }
 
-  // --- Bips de compte à rebours (pitches) ---
+  // ---------- Bips de compte à rebours ----------
   function beepOnce(freq = 800, ms = 140) {
     if (!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    const vol = Math.max(0.0001, masterGain?.gain?.value ?? 0.6);
+    const vol = Math.max(0.0001, (masterGain?.gain?.value ?? 0.6));
     osc.frequency.value = freq;
     g.gain.setValueAtTime(0, audioCtx.currentTime);
     g.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.01);
@@ -237,30 +259,50 @@
     osc.start(); osc.stop(audioCtx.currentTime + ms/1000 + 0.05);
   }
   function beepForStep(stepIdx) {
-    // 0: "4", 1:"3", 2:"2", 3:"1", 4:"GO"
-    const map = [700, 780, 860, 940, 1200];
+    const map = [700, 780, 860, 940, 1200]; // GO plus aigu
     beepOnce(map[Math.min(stepIdx, map.length-1)], stepIdx === 4 ? 200 : 140);
   }
 
-  // --- Voix compte à rebours ---
-  function speak(text) {
+  // ---------- Voix (fiable) ----------
+  function waitForVoices(timeout = 1500) {
+    return new Promise((resolve) => {
+      const done = () => resolve(window.speechSynthesis.getVoices());
+      const id = setTimeout(done, timeout);
+      // Provoque le chargement et capte l’événement
+      try { window.speechSynthesis.getVoices(); } catch {}
+      try {
+        window.speechSynthesis.onvoiceschanged = () => {
+          clearTimeout(id);
+          done();
+        };
+      } catch { /* ignore */ }
+    });
+  }
+
+  async function speak(text) {
     if (!('speechSynthesis' in window)) return false;
-    try {
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = (langSelect?.value || savedLang) === 'fr' ? 'fr-FR' : 'en-US';
-      u.rate = 1.0; u.pitch = 1.0; u.volume = safeNum(volEl?.value, 60)/100;
-      const voices = window.speechSynthesis.getVoices();
-      const v = voices.find(v => v.lang?.toLowerCase().startsWith(u.lang.toLowerCase()));
-      if (v) u.voice = v;
-      window.speechSynthesis.speak(u);
-      return true;
-    } catch { return false; }
+    try { window.speechSynthesis.cancel(); } catch {} // évite doublons (bug mac)
+
+    const voices = await waitForVoices(1500);
+    const isFr = (langSelect?.value || savedLang).startsWith('fr');
+    const lang = isFr ? 'fr-FR' : 'en-US';
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.rate = 1.0; u.pitch = 1.0;
+    u.volume = Math.max(0.0001, (Number(volEl?.value) || 60) / 100);
+
+    const v = voices.find(v => v.lang?.toLowerCase().startsWith(lang.toLowerCase()));
+    if (v) u.voice = v;
+
+    try { window.speechSynthesis.speak(u); return true; }
+    catch { return false; }
   }
   function cancelSpeech() {
     try { window.speechSynthesis?.cancel(); } catch {}
   }
 
-  // -------- Cadence progressive --------
+  // ---------- Cadence progressive ----------
   function accelBpmAt(elapsed) {
     const b0 = clamp(safeNum(startBpmEl?.value, 40), 20, 300);
     const b1 = clamp(safeNum(endBpmEl?.value, 50), 20, 300);
@@ -271,7 +313,7 @@
     return b0 + (b1 - b0) * (elapsed / T);
   }
 
-  // -------- Scheduler --------
+  // ---------- Scheduler ----------
   function scheduler() {
     if (!audioCtx) return;
     if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) { stop(true); return; }
@@ -357,36 +399,40 @@
     updateTimeLeftDisplay();
   }
 
-  // -------- Countdown with sound --------
+  // ---------- Countdown (visuel + son) ----------
   function playCountdownCue(stepIdx) {
+    if (stepIdx === lastCdStep) return; // anti-doublon
+    lastCdStep = stepIdx;
+
     const mode = countdownSoundEl?.value || 'beep';
     if (mode === 'none') return;
 
     if (mode === 'beep') {
-      // "4,3,2,1" bips, "GO" plus aigu/long
       beepForStep(stepIdx);
       return;
     }
-
     if (mode === 'voice') {
-      const words = L().voice_steps || (langSelect?.value === 'fr' ? ["quatre","trois","deux","un","partez"] : ["four","three","two","one","go"]);
+      const words = L().voice_steps || ((langSelect?.value || savedLang).startsWith('fr')
+        ? ["quatre","trois","deux","un","partez"]
+        : ["four","three","two","one","go"]);
       const txt = words[Math.min(stepIdx, words.length - 1)];
-      if (txt) speak(txt);
+      if (!txt) return;
+      // Fallback bip si la voix échoue (iOS restrictions)
+      speak(txt).then(ok => { if (!ok) beepForStep(stepIdx); });
     }
   }
 
   function runCountdown() {
     return new Promise((resolve, reject) => {
-      // Fallback si overlay absent
+      lastCdStep = -1;
       const hasOverlay = overlayEl && countdownEl;
       countdownAbort = false;
       setTimeLeftLabel(true);
 
       const steps = ['4','3','2','1','GO'];
-      let idx = 0;
-
       if (hasOverlay) overlayEl.classList.remove('hidden');
 
+      let idx = 0;
       (function next() {
         if (countdownAbort) {
           if (hasOverlay) overlayEl.classList.add('hidden');
@@ -396,24 +442,20 @@
         }
         if (hasOverlay) countdownEl.textContent = steps[idx];
 
-        // 🔊 jouer le cue pour ce step
         playCountdownCue(idx);
 
         idx++;
-        if (idx < steps.length) {
-          setTimeout(next, 1000);
-        } else {
-          setTimeout(() => {
-            if (hasOverlay) overlayEl.classList.add('hidden');
-            setTimeLeftLabel(!!restEndTime);
-            resolve();
-          }, 300);
-        }
+        if (idx < steps.length) setTimeout(next, 1000);
+        else setTimeout(() => {
+          if (hasOverlay) overlayEl.classList.add('hidden');
+          setTimeLeftLabel(!!restEndTime);
+          resolve();
+        }, 300);
       })();
     });
   }
 
-  // -------- Start / Stop --------
+  // ---------- Start / Stop ----------
   async function start() {
     if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
     stopRestUI();
@@ -424,17 +466,18 @@
     updateHintText();
 
     ensureAudio();
+    unlockAudioOnce();              // iOS: déverrouille l’audio
     await audioCtx.resume();
 
-    setStatus(L().start.toLowerCase() === 'start' ? 'ready...' : 'prêt...');
+    setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'prêt...' : 'ready...');
     startBtn && (startBtn.disabled = true);
     stopBtn && (stopBtn.disabled = false);
 
     try { await runCountdown(); }
-    catch { setStatus((langSelect?.value || savedLang) === 'fr' ? 'interrompu' : 'aborted'); startBtn && (startBtn.disabled = false); stopBtn && (stopBtn.disabled = true); return; }
+    catch { setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'interrompu' : 'aborted'); startBtn && (startBtn.disabled = false); stopBtn && (stopBtn.disabled = true); return; }
 
     isPlaying = true; manualStop = false;
-    setStatus((langSelect?.value || savedLang) === 'fr' ? 'lecture' : 'playing');
+    setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'lecture' : 'playing');
     if (masterGain && volEl) masterGain.gain.value = safeNum(volEl.value, 60) / 100;
 
     startTime = audioCtx.currentTime + 0.1;
@@ -464,7 +507,7 @@
     if (!audioCtx && !finished) return;
 
     isPlaying = false;
-    const fr = (langSelect?.value || savedLang) === 'fr';
+    const fr = (langSelect?.value || savedLang).startsWith('fr');
     setStatus(finished ? (fr ? 'terminé' : 'finished') : (fr ? 'arrêté' : 'stopped'));
 
     startBtn && (startBtn.disabled = false);
@@ -501,7 +544,7 @@
     updateTimeLeftDisplay();
   }
 
-  // -------- Wiring --------
+  // ---------- Wiring ----------
   startBtn?.addEventListener('click', start);
   stopBtn?.addEventListener('click', () => {
     manualStop = true;
@@ -531,26 +574,6 @@
     inp?.addEventListener('change', () => { inp.value = Math.max(0, safeNum(inp.value, 0)); });
   });
 
-  function updateTimeLeftDisplay() {
-    if (!timeLeftEl || !audioCtx) return;
-    if (sessionEndTime) {
-      const left = sessionEndTime - audioCtx.currentTime;
-      timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
-      setTimeLeftLabel(false);
-    } else if (restEndTime) {
-      const left = restEndTime - audioCtx.currentTime;
-      timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
-      setTimeLeftLabel(true);
-    } else {
-      timeLeftEl.textContent = '—';
-      setTimeLeftLabel(false);
-    }
-  }
-  function secondsToMMSS(s) {
-    s = Math.max(0, Math.floor(s));
-    const m = Math.floor(s / 60);
-    const ss = (s % 60).toString().padStart(2, '0');
-    return `${m}:${ss}`;
-  }
+  // ---------- Utils ----------
   function setStatus(text) { statusEl && (statusEl.textContent = text); }
 })();
