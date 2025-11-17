@@ -1,15 +1,19 @@
 /*!
- * PhysioTempo — cadence trainer with countdown, auto-restart & proper countdown label
- * (c) 2025 Sebrbo and contributors
- * License (code): PolyForm Noncommercial 1.0.0
- * Assets: CC BY-NC 4.0
- * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
-*/
+ * PhysioTempo — robust build with null-safety (countdown + auto-restart)
+ * Build: 2025-11-17 v8
+ * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
+ */
 (() => {
   'use strict';
 
   // ---------- Modes ----------
   const MODES = { ACCEL: 'accel', STEADY: 'steady', RANDOM: 'random' };
+
+  // ---------- Helpers ----------
+  const $ = (sel) => document.querySelector(sel);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const safeNum = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
+  const nowISO = () => new Date().toISOString().slice(11,19);
 
   // ---------- i18n ----------
   const i18nDict = {
@@ -19,7 +23,6 @@
       mode_accel: "Progressive cadence",
       mode_steady: "Fixed cadence (timed)",
       mode_random: "Random cadence",
-
       start_bpm_label: "Start cadence (bpm)",
       end_bpm_label: "End cadence (bpm)",
       ramp_label: "Ramp duration (s)",
@@ -29,11 +32,9 @@
       random_max_bpm_label: "Max cadence (bpm)",
       random_secs_label: "Duration (s)",
       volume_label: "Volume",
-
       start_options: "Start & cycles",
       auto_restart_label: "Auto-restart",
       auto_restart_delay_label: "Restart delay (s)",
-
       preset: "Preset 40 → 50 in 120s",
       start: "Start",
       stop: "Stop",
@@ -41,7 +42,6 @@
       status: "Status",
       time_left: "Time left",
       countdown_suffix: " (countdown)",
-
       hint_accel:
         "Progressive: cadence ramps linearly from start to end, then stops automatically.",
       hint_steady:
@@ -55,7 +55,6 @@
       mode_accel: "Cadence progressive",
       mode_steady: "Cadence fixe (durée)",
       mode_random: "Cadence aléatoire",
-
       start_bpm_label: "Cadence de départ (bpm)",
       end_bpm_label: "Cadence d’arrivée (bpm)",
       ramp_label: "Durée d’accélération (s)",
@@ -65,11 +64,9 @@
       random_max_bpm_label: "Cadence max (bpm)",
       random_secs_label: "Durée (s)",
       volume_label: "Volume",
-
       start_options: "Démarrage & cycles",
       auto_restart_label: "Redémarrage automatique",
       auto_restart_delay_label: "Délai de redémarrage (s)",
-
       preset: "Préréglage 40 → 50 en 120 s",
       start: "Démarrer",
       stop: "Arrêter",
@@ -77,7 +74,6 @@
       status: "Statut",
       time_left: "Temps restant",
       countdown_suffix: " (compte à rebours)",
-
       hint_accel:
         "Cadence progressive : la cadence augmente linéairement de la valeur de départ à la valeur d’arrivée, puis s’arrête automatiquement.",
       hint_steady:
@@ -87,9 +83,7 @@
     }
   };
 
-  const $ = sel => document.querySelector(sel);
-
-  // ---------- DOM refs ----------
+  // ---------- DOM refs (tous null-safe) ----------
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
@@ -105,6 +99,8 @@
   const bpmNowEl = $('#bpmNow');
   const statusEl = $('#status');
   const timeLeftEl = $('#timeLeft');
+  const timeLeftLabelEl = document.querySelector('small.i18n[data-key="time_left"]');
+
   const startBtn = $('#startBtn');
   const stopBtn  = $('#stopBtn');
   const presetBtn = $('#preset');
@@ -118,31 +114,23 @@
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
 
-  // petit accès direct au label "Temps restant"
-  const timeLeftLabelEl = document.querySelector('small.i18n[data-key="time_left"]');
-
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
   // ---------- State ----------
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-
   let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
-  let audioCtx = null;
-  let masterGain = null;
+  let audioCtx = null, masterGain = null;
   let isPlaying = false;
-  let startTime = 0;          // moment de départ des clics
-  let nextNoteTime = 0;       // prochaine planification
-  let lookaheadTimer = null;
-  let rafId = null;
-  let sessionEndTime = null;  // fin auto session
+  let startTime = 0, nextNoteTime = 0;
+  let lookaheadTimer = null, rafId = null;
+  let sessionEndTime = null;         // fin AUTO de la session en cours
   let lastRandomBpm = null;
 
-  // Countdown, auto-restart & repos
+  // Countdown & auto-restart & rest
   let countdownAbort = false;
   let autoRestartTimerId = null;
   let manualStop = false;
-  let restEndTime = null;     // fin de la phase de repos
-  let restRafId = null;       // animation frame pendant repos
+  let restEndTime = null;
+  let restRafId = null;
 
   // Scheduler params
   const scheduleAheadTime = 0.15; // s
@@ -150,50 +138,53 @@
   const clickHz = 880;
   const clickLen = 0.03;
 
-  // ---------- Init ----------
+  // ---------- Boot ----------
   const savedLang = localStorage.getItem('pt_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en');
-  modeSelect.value = currentMode;
-  langSelect.value = savedLang;
+  if (modeSelect) modeSelect.value = currentMode;
+  if (langSelect) langSelect.value = savedLang;
   showPanelFor(currentMode);
   applyI18n(savedLang);
+  setStatus('au repos');
 
-  // ---------- i18n helpers ----------
+  console.log(`[PhysioTempo ${nowISO()}] Boot v8; lang=${savedLang}; mode=${currentMode}`);
+
+  // ---------- i18n ----------
   function applyI18n(lang) {
-    document.documentElement.lang = lang;
-    document.querySelectorAll('.i18n').forEach(el => {
-      const key = el.getAttribute('data-key');
-      if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
-    });
-    updateHintText();
-    // ajuste l'étiquette selon l'état (compte à rebours actif ?)
-    setTimeLeftLabel(isCountdownActive());
+    try {
+      document.documentElement.lang = lang;
+      document.querySelectorAll('.i18n').forEach(el => {
+        const key = el.getAttribute('data-key');
+        if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
+      });
+      updateHintText();
+      setTimeLeftLabel(isCountdownActive());
+    } catch(e) { console.warn('i18n error', e); }
   }
   function updateHintText() {
-    const L = i18nDict[langSelect.value];
-    const key =
-      currentMode === MODES.ACCEL ? 'hint_accel' :
-      currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
+    if (!hintEl) return;
+    const L = i18nDict[lang()];
+    const key = currentMode === MODES.ACCEL ? 'hint_accel'
+              : currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
     hintEl.textContent = L[key] || '';
   }
   function setTimeLeftLabel(isCountdown) {
-    const L = i18nDict[langSelect.value];
-    if (timeLeftLabelEl) {
-      timeLeftLabelEl.textContent = L.time_left + (isCountdown ? (L.countdown_suffix || "") : "");
-    }
+    if (!timeLeftLabelEl) return;
+    const L = i18nDict[lang()];
+    timeLeftLabelEl.textContent = L.time_left + (isCountdown ? (L.countdown_suffix || '') : '');
   }
   function isCountdownActive() {
-    // actif si overlay affiché (avant départ) OU pendant repos (auto-restart en attente)
-    const overlayActive = !overlayEl.classList.contains('hidden');
+    const overlayActive = !!overlayEl && !overlayEl.classList.contains('hidden');
     return overlayActive || !!restEndTime;
   }
+  function lang(){ return (langSelect && langSelect.value) || savedLang; }
 
-  // ---------- UI bindings ----------
-  langSelect.addEventListener('change', () => {
-    localStorage.setItem('pt_lang', langSelect.value);
-    applyI18n(langSelect.value);
+  // ---------- UI events ----------
+  langSelect?.addEventListener('change', () => {
+    localStorage.setItem('pt_lang', lang());
+    applyI18n(lang());
   });
 
-  modeSelect.addEventListener('change', () => {
+  modeSelect?.addEventListener('change', () => {
     currentMode = modeSelect.value;
     localStorage.setItem('pt_mode', currentMode);
     showPanelFor(currentMode);
@@ -201,11 +192,10 @@
     updateTimeLeftDisplay();
   });
 
-  // Ne jamais masquer le panneau « commun »
   function showPanelFor(mode) {
     panels.forEach(p => {
       if (p.classList.contains('common')) {
-        p.classList.remove('hidden');
+        p.classList.remove('hidden'); // jamais masqué
       } else {
         p.classList.toggle('hidden', p.getAttribute('data-mode') !== mode);
       }
@@ -217,41 +207,39 @@
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       masterGain = audioCtx.createGain();
-      masterGain.gain.value = Number(volEl.value) / 100;
+      masterGain.gain.value = safeNum(volEl?.value, 60) / 100;
       masterGain.connect(audioCtx.destination);
     }
   }
   function scheduleClick(time) {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.frequency.value = clickHz;
     const g = Math.max(0.0001, masterGain.gain.value);
+    osc.frequency.value = clickHz;
     gain.gain.setValueAtTime(0, time);
     gain.gain.linearRampToValueAtTime(g, time + 0.002);
     gain.gain.exponentialRampToValueAtTime(Math.max(1e-4, g * 0.001), time + clickLen);
     gain.gain.setValueAtTime(0, time + clickLen + 0.01);
-    osc.connect(gain);
-    gain.connect(masterGain);
-    osc.start(time);
-    osc.stop(time + clickLen + 0.02);
+    osc.connect(gain); gain.connect(masterGain);
+    osc.start(time); osc.stop(time + clickLen + 0.02);
   }
 
-  // ---------- Cadence progressive ----------
+  // ---------- Accel cadence ----------
   function accelBpmAt(elapsed) {
-    // elapsed en secondes depuis startTime
-    let b0 = clamp(Number(startBpmEl.value || 0), 20, 300);
-    let b1 = clamp(Number(endBpmEl.value   || 0), 20, 300);
-    const T = Math.max(0, Number(rampEl.value || 0));
-    if (T <= 0) return b1;              // saut instantané
+    const b0 = clamp(safeNum(startBpmEl?.value, 40), 20, 300);
+    const b1 = clamp(safeNum(endBpmEl?.value, 50), 20, 300);
+    const T  = Math.max(0, safeNum(rampEl?.value, 0));
+    if (T <= 0) return b1;
     if (elapsed <= 0) return b0;
     if (elapsed >= T) return b1;
-    const k = (b1 - b0) / T;
-    return b0 + k * elapsed;
+    return b0 + (b1 - b0) * (elapsed / T);
   }
 
   // ---------- Scheduler ----------
   function scheduler() {
-    // Arrêt auto
+    if (!audioCtx) return;
+
+    // Fin auto
     if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) {
       stop(true);
       return;
@@ -260,25 +248,24 @@
     while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
       scheduleClick(nextNoteTime);
 
-      let interval;
+      let interval = 0.5; // fallback
       if (currentMode === MODES.ACCEL) {
         const elapsed = Math.max(0, nextNoteTime - startTime);
         const bpm = Math.max(1, accelBpmAt(elapsed));
-        interval = 60.0 / bpm;
+        interval = 60 / bpm;
       } else if (currentMode === MODES.STEADY) {
-        const bpm = clamp(Number(steadyBpmEl.value), 20, 300);
-        interval = 60.0 / bpm;
-      } else { // RANDOM
-        let lo = clamp(Number(minBpmEl.value), 20, 300);
-        let hi = clamp(Number(maxBpmEl.value), 20, 300);
+        const bpm = clamp(safeNum(steadyBpmEl?.value, 60), 20, 300);
+        interval = 60 / bpm;
+      } else {
+        let lo = clamp(safeNum(minBpmEl?.value, 40), 20, 300);
+        let hi = clamp(safeNum(maxBpmEl?.value, 60), 20, 300);
         if (lo > hi) [lo, hi] = [hi, lo];
         const bpm = lastRandomBpm = lo + Math.random() * (hi - lo);
-        interval = 60.0 / bpm;
+        interval = 60 / bpm;
       }
 
-      // Évite de dépasser la fin de session
       if (sessionEndTime && nextNoteTime + interval > sessionEndTime) {
-        nextNoteTime = sessionEndTime + 1; // force sortie
+        nextNoteTime = sessionEndTime + 1;
       } else {
         nextNoteTime += interval;
       }
@@ -286,21 +273,22 @@
   }
 
   function updateReadout() {
+    if (!audioCtx) return;
+
     if (!isPlaying) {
-      bpmNowEl.textContent = '—';
-      updateTimeLeftDisplay(); // peut afficher le compte à rebours de repos
+      bpmNowEl && (bpmNowEl.textContent = '—');
+      updateTimeLeftDisplay();
       return;
     }
-    // Affichage cadence actuelle basé sur le temps réel
-    const now = audioCtx.currentTime;
+
     if (currentMode === MODES.ACCEL) {
-      const elapsed = Math.max(0, now - startTime);
+      const elapsed = Math.max(0, audioCtx.currentTime - startTime);
       const bpm = Math.max(1, accelBpmAt(elapsed));
-      bpmNowEl.textContent = bpm.toFixed(1);
+      bpmNowEl && (bpmNowEl.textContent = bpm.toFixed(1));
     } else if (currentMode === MODES.STEADY) {
-      bpmNowEl.textContent = clamp(Number(steadyBpmEl.value), 20, 300).toFixed(1);
+      bpmNowEl && (bpmNowEl.textContent = clamp(safeNum(steadyBpmEl?.value, 60), 20, 300).toFixed(1));
     } else {
-      bpmNowEl.textContent = lastRandomBpm ? lastRandomBpm.toFixed(1) : '—';
+      bpmNowEl && (bpmNowEl.textContent = lastRandomBpm ? lastRandomBpm.toFixed(1) : '—');
     }
 
     updateTimeLeftDisplay();
@@ -314,25 +302,27 @@
     return `${m}:${ss}`;
   }
   function updateTimeLeftDisplay() {
+    if (!timeLeftEl) return;
+    if (!audioCtx) { timeLeftEl.textContent = '—'; return; }
+
     if (sessionEndTime) {
-      const left = sessionEndTime - (audioCtx ? audioCtx.currentTime : 0);
+      const left = sessionEndTime - audioCtx.currentTime;
       timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
       setTimeLeftLabel(false);
     } else if (restEndTime) {
-      const left = restEndTime - (audioCtx ? audioCtx.currentTime : 0);
+      const left = restEndTime - audioCtx.currentTime;
       timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
-      setTimeLeftLabel(true); // afficher "(compte à rebours)"
+      setTimeLeftLabel(true);
     } else {
       timeLeftEl.textContent = '—';
       setTimeLeftLabel(false);
     }
   }
 
-  // Raf de repos (pour mettre à jour "Temps restant")
   function startRestUI() {
     if (restRafId) cancelAnimationFrame(restRafId);
     const loop = () => {
-      if (!restEndTime) { restRafId = null; return; }
+      if (!restEndTime || !audioCtx) { restRafId = null; return; }
       updateTimeLeftDisplay();
       restRafId = requestAnimationFrame(loop);
     };
@@ -344,32 +334,55 @@
     updateTimeLeftDisplay();
   }
 
-  // ---------- Compte à rebours ----------
+  // ---------- Countdown ----------
   function runCountdown() {
     return new Promise((resolve, reject) => {
+      // Si pas d’overlay, on fait un simple délai 4s sans planter
+      if (!overlayEl || !countdownEl) {
+        console.warn('Countdown overlay missing → fallback delay.');
+        setTimeLeftLabel(true);
+        const t0 = performance.now();
+        const tick = () => {
+          const dt = performance.now() - t0;
+          if (countdownAbort) { setTimeLeftLabel(!!restEndTime); return reject(new Error('aborted')); }
+          if (dt >= 4000) { setTimeLeftLabel(!!restEndTime); return resolve(); }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+        return;
+      }
+
       countdownAbort = false;
       overlayEl.classList.remove('hidden');
-      setTimeLeftLabel(true); // montrer "(compte à rebours)" pendant le CR
+      setTimeLeftLabel(true);
 
       const steps = ['4','3','2','1','GO'];
       let idx = 0;
       (function next() {
-        if (countdownAbort) { overlayEl.classList.add('hidden'); setTimeLeftLabel(!!restEndTime); return reject(new Error('aborted')); }
+        if (countdownAbort) {
+          overlayEl.classList.add('hidden');
+          setTimeLeftLabel(!!restEndTime);
+          return reject(new Error('aborted'));
+        }
         countdownEl.textContent = steps[idx];
         idx++;
         if (idx < steps.length) setTimeout(next, 1000);
-        else setTimeout(() => { overlayEl.classList.add('hidden'); setTimeLeftLabel(!!restEndTime); resolve(); }, 400);
+        else setTimeout(() => {
+          overlayEl.classList.add('hidden');
+          setTimeLeftLabel(!!restEndTime);
+          resolve();
+        }, 400);
       })();
     });
   }
 
   // ---------- Start / Stop ----------
   async function start() {
-    // Si un redémarrage était planifié, on l'annule (l'utilisateur force le départ)
+    // Annule un redémarrage planifié
     if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
     stopRestUI();
 
-    currentMode = modeSelect.value;
+    currentMode = modeSelect?.value || MODES.ACCEL;
     localStorage.setItem('pt_mode', currentMode);
     showPanelFor(currentMode);
     updateHintText();
@@ -378,30 +391,31 @@
     await audioCtx.resume();
 
     // Compte à rebours
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    setStatus(langSelect.value === 'fr' ? 'prêt...' : 'ready...');
+    setStatus(lang() === 'fr' ? 'prêt...' : 'ready...');
+    startBtn && (startBtn.disabled = true);
+    stopBtn && (stopBtn.disabled = false);
+
     try { await runCountdown(); }
-    catch { startBtn.disabled = false; stopBtn.disabled = true; setStatus(langSelect.value === 'fr' ? 'interrompu' : 'aborted'); return; }
+    catch { setStatus(lang() === 'fr' ? 'interrompu' : 'aborted'); startBtn && (startBtn.disabled = false); stopBtn && (stopBtn.disabled = true); return; }
 
+    // Lecture
     isPlaying = true; manualStop = false;
-    setStatus(langSelect.value === 'fr' ? 'lecture' : 'playing');
-    masterGain.gain.value = Number(volEl.value) / 100;
+    setStatus(lang() === 'fr' ? 'lecture' : 'playing');
+    if (masterGain && volEl) masterGain.gain.value = safeNum(volEl.value, 60) / 100;
 
-    // Point de départ exact
     startTime = audioCtx.currentTime + 0.1;
     nextNoteTime = startTime;
 
-    // Fin automatique par mode (relative à startTime)
+    // Fin auto de session (relative à startTime)
     sessionEndTime = null; lastRandomBpm = null;
     if (currentMode === MODES.ACCEL) {
-      const T = Math.max(0, Number(rampEl.value));
+      const T = Math.max(0, safeNum(rampEl?.value, 0));
       if (T > 0) sessionEndTime = startTime + T;
     } else if (currentMode === MODES.STEADY) {
-      const secs = Math.max(1, Number(steadySecsEl.value));
+      const secs = Math.max(1, safeNum(steadySecsEl?.value, 30));
       sessionEndTime = startTime + secs;
     } else {
-      const secs = Math.max(1, Number(randomSecsEl.value));
+      const secs = Math.max(1, safeNum(randomSecsEl?.value, 90));
       sessionEndTime = startTime + secs;
     }
 
@@ -411,44 +425,36 @@
   }
 
   function stop(finished = false) {
-    // Arrêt CR si en cours
     countdownAbort = true;
-
     if (!audioCtx && !finished) return;
 
     isPlaying = false;
-
-    const fr = langSelect.value === 'fr';
+    const fr = lang() === 'fr';
     setStatus(finished ? (fr ? 'terminé' : 'finished') : (fr ? 'arrêté' : 'stopped'));
 
-    // Par défaut : Start activé, Stop désactivé...
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    // Par défaut
+    startBtn && (startBtn.disabled = false);
+    stopBtn && (stopBtn.disabled = true);
 
-    // ...sauf si on passe en "repos" (auto-restart activé) : laisser STOP actif pour annuler
-    const wantRestart = autoRestartEl.checked;
-    const delaySec = Math.max(1, Number(autoRestartDelayEl.value || 0));
+    // Repos (auto-restart) ?
+    const wantRestart = !!autoRestartEl?.checked;
+    const delaySec = Math.max(1, safeNum(autoRestartDelayEl?.value, 5));
     if (finished && wantRestart && !manualStop) {
-      // UI de repos : STOP actif pour annuler, START actif pour repartir tout de suite
-      stopBtn.disabled = false;
-      startBtn.disabled = false;
+      stopBtn && (stopBtn.disabled = false);
+      startBtn && (startBtn.disabled = false);
 
-      // Statut + minuterie de repos
       setStatus(fr ? `compte à rebours avant redémarrage` : `countdown before restart`);
       if (audioCtx) {
         restEndTime = audioCtx.currentTime + delaySec;
         startRestUI();
-        setTimeLeftLabel(true); // indiquer "(compte à rebours)"
+        setTimeLeftLabel(true);
       }
-
-      // Timer réel de redémarrage
       autoRestartTimerId = setTimeout(() => {
         autoRestartTimerId = null;
         stopRestUI();
-        start(); // relance (avec compte à rebours)
+        start();
       }, delaySec * 1000);
     } else {
-      // Pas de repos planifié
       manualStop = true;
       if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
       stopRestUI();
@@ -457,47 +463,42 @@
 
     if (lookaheadTimer) { clearInterval(lookaheadTimer); lookaheadTimer = null; }
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    bpmNowEl.textContent = '—';
-    sessionEndTime = null;
-    lastRandomBpm = null;
+    bpmNowEl && (bpmNowEl.textContent = '—');
+    sessionEndTime = null; lastRandomBpm = null;
     updateTimeLeftDisplay();
   }
 
-  // ---------- Events ----------
-  startBtn.addEventListener('click', start);
-  stopBtn.addEventListener('click', () => {
-    // Si on est en repos (auto-restart en attente), ce stop annule la relance et revient à l'état "au repos"
+  // ---------- Wiring ----------
+  startBtn?.addEventListener('click', start);
+  stopBtn?.addEventListener('click', () => {
     manualStop = true;
     if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
     stopRestUI();
     stop(false);
   });
-
-  volEl.addEventListener('input', () => { if (masterGain) masterGain.gain.value = Number(volEl.value) / 100; });
-
-  presetBtn.addEventListener('click', () => {
-    modeSelect.value = MODES.ACCEL;
+  volEl?.addEventListener('input', () => { if (masterGain) masterGain.gain.value = safeNum(volEl.value, 60) / 100; });
+  presetBtn?.addEventListener('click', () => {
+    if (modeSelect) modeSelect.value = MODES.ACCEL;
     currentMode = MODES.ACCEL;
     localStorage.setItem('pt_mode', currentMode);
     showPanelFor(currentMode);
     updateHintText();
-    startBpmEl.value = 40; endBpmEl.value = 50; rampEl.value = 120;
+    if (startBpmEl) startBpmEl.value = 40;
+    if (endBpmEl)   endBpmEl.value   = 50;
+    if (rampEl)     rampEl.value     = 120;
   });
-
   document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); if (startBtn.disabled) stop(); else start(); }
+    if (e.code === 'Space') { e.preventDefault(); if (startBtn?.disabled) stop(); else start(); }
   });
 
-  // Validation simple
+  // Number guards
   [startBpmEl, endBpmEl, steadyBpmEl, minBpmEl, maxBpmEl].forEach(inp => {
-    inp?.addEventListener('change', () => { inp.value = clamp(Number(inp.value || 0), 20, 300); });
+    inp?.addEventListener('change', () => { inp.value = clamp(safeNum(inp.value, 0), 20, 300); });
   });
   [rampEl, steadySecsEl, randomSecsEl, autoRestartDelayEl].forEach(inp => {
-    inp?.addEventListener('change', () => { inp.value = Math.max(0, Number(inp.value || 0)); });
+    inp?.addEventListener('change', () => { inp.value = Math.max(0, safeNum(inp.value, 0)); });
   });
 
-  // Aide initiale + label
-  updateHintText();
-  setStatus('au repos');
-  setTimeLeftLabel(false);
+  // ---------- Utils ----------
+  function setStatus(text) { statusEl && (statusEl.textContent = text); }
 })();
