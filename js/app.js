@@ -1,21 +1,17 @@
 /*!
- * PhysioTempo — robust build with null-safety (countdown + auto-restart)
- * Build: 2025-11-17 v8
+ * PhysioTempo — countdown sound (beep/voice), robust, auto-restart
+ * Build: 2025-11-17 v9
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
   'use strict';
 
-  // ---------- Modes ----------
   const MODES = { ACCEL: 'accel', STEADY: 'steady', RANDOM: 'random' };
-
-  // ---------- Helpers ----------
   const $ = (sel) => document.querySelector(sel);
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const safeNum = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
-  const nowISO = () => new Date().toISOString().slice(11,19);
 
-  // ---------- i18n ----------
+  // -------- i18n --------
   const i18nDict = {
     en: {
       language: "Language",
@@ -35,6 +31,10 @@
       start_options: "Start & cycles",
       auto_restart_label: "Auto-restart",
       auto_restart_delay_label: "Restart delay (s)",
+      countdown_sound_label: "Countdown sound",
+      cd_none: "Mute",
+      cd_beep: "Beep",
+      cd_voice: "Voice (EN/FR)",
       preset: "Preset 40 → 50 in 120s",
       start: "Start",
       stop: "Stop",
@@ -47,7 +47,8 @@
       hint_steady:
         "Fixed (timed): constant cadence for the selected duration, then stops automatically.",
       hint_random:
-        "Random: each beat uses a random cadence between Min and Max for the selected duration, then stops automatically."
+        "Random: each beat uses a random cadence between Min and Max for the selected duration, then stops automatically.",
+      voice_steps: ["four","three","two","one","go"]
     },
     fr: {
       language: "Langue",
@@ -67,6 +68,10 @@
       start_options: "Démarrage & cycles",
       auto_restart_label: "Redémarrage automatique",
       auto_restart_delay_label: "Délai de redémarrage (s)",
+      countdown_sound_label: "Signal du compte à rebours",
+      cd_none: "Muet",
+      cd_beep: "Bip",
+      cd_voice: "Voix (FR/EN)",
       preset: "Préréglage 40 → 50 en 120 s",
       start: "Démarrer",
       stop: "Arrêter",
@@ -79,28 +84,25 @@
       hint_steady:
         "Cadence fixe (durée) : cadence constante pendant la durée choisie, puis arrêt automatique.",
       hint_random:
-        "Cadence aléatoire : chaque battement utilise une cadence tirée entre Min et Max pendant la durée choisie, puis arrêt automatique."
+        "Cadence aléatoire : chaque battement utilise une cadence tirée entre Min et Max pendant la durée choisie, puis arrêt automatique.",
+      voice_steps: ["quatre","trois","deux","un","partez"]
     }
   };
 
-  // ---------- DOM refs (tous null-safe) ----------
+  // -------- DOM --------
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
-
   const steadyBpmEl  = $('#steadyBpm');
   const steadySecsEl = $('#steadySeconds');
-
   const minBpmEl     = $('#minBpm');
   const maxBpmEl     = $('#maxBpm');
   const randomSecsEl = $('#randomSeconds');
-
   const volEl    = $('#volume');
   const bpmNowEl = $('#bpmNow');
   const statusEl = $('#status');
   const timeLeftEl = $('#timeLeft');
   const timeLeftLabelEl = document.querySelector('small.i18n[data-key="time_left"]');
-
   const startBtn = $('#startBtn');
   const stopBtn  = $('#stopBtn');
   const presetBtn = $('#preset');
@@ -111,34 +113,32 @@
   const autoRestartEl = $('#autoRestart');
   const autoRestartDelayEl = $('#autoRestartDelay');
 
+  const countdownSoundEl = $('#countdownSound');  // <— NEW
+
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
 
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
-  // ---------- State ----------
+  // -------- State --------
   let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
   let audioCtx = null, masterGain = null;
   let isPlaying = false;
   let startTime = 0, nextNoteTime = 0;
   let lookaheadTimer = null, rafId = null;
-  let sessionEndTime = null;         // fin AUTO de la session en cours
-  let lastRandomBpm = null;
+  let sessionEndTime = null, lastRandomBpm = null;
 
-  // Countdown & auto-restart & rest
   let countdownAbort = false;
   let autoRestartTimerId = null;
   let manualStop = false;
-  let restEndTime = null;
-  let restRafId = null;
+  let restEndTime = null, restRafId = null;
 
-  // Scheduler params
   const scheduleAheadTime = 0.15; // s
   const lookahead = 25;           // ms
   const clickHz = 880;
   const clickLen = 0.03;
 
-  // ---------- Boot ----------
+  // -------- Init --------
   const savedLang = localStorage.getItem('pt_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en');
   if (modeSelect) modeSelect.value = currentMode;
   if (langSelect) langSelect.value = savedLang;
@@ -146,42 +146,40 @@
   applyI18n(savedLang);
   setStatus('au repos');
 
-  console.log(`[PhysioTempo ${nowISO()}] Boot v8; lang=${savedLang}; mode=${currentMode}`);
+  // Préférence son du CR
+  const savedCd = localStorage.getItem('pt_cd_sound') || 'beep';
+  if (countdownSoundEl) countdownSoundEl.value = savedCd;
 
-  // ---------- i18n ----------
+  // -------- i18n helpers --------
+  function L() { return i18nDict[langSelect?.value || savedLang]; }
   function applyI18n(lang) {
-    try {
-      document.documentElement.lang = lang;
-      document.querySelectorAll('.i18n').forEach(el => {
-        const key = el.getAttribute('data-key');
-        if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
-      });
-      updateHintText();
-      setTimeLeftLabel(isCountdownActive());
-    } catch(e) { console.warn('i18n error', e); }
+    document.documentElement.lang = lang;
+    document.querySelectorAll('.i18n').forEach(el => {
+      const key = el.getAttribute('data-key');
+      if (i18nDict[lang] && i18nDict[lang][key]) el.textContent = i18nDict[lang][key];
+    });
+    updateHintText();
+    setTimeLeftLabel(isCountdownActive());
   }
   function updateHintText() {
     if (!hintEl) return;
-    const L = i18nDict[lang()];
-    const key = currentMode === MODES.ACCEL ? 'hint_accel'
-              : currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
-    hintEl.textContent = L[key] || '';
+    const key = currentMode === MODES.ACCEL ? 'hint_accel' :
+                currentMode === MODES.STEADY ? 'hint_steady' : 'hint_random';
+    hintEl.textContent = L()[key] || '';
   }
   function setTimeLeftLabel(isCountdown) {
     if (!timeLeftLabelEl) return;
-    const L = i18nDict[lang()];
-    timeLeftLabelEl.textContent = L.time_left + (isCountdown ? (L.countdown_suffix || '') : '');
+    timeLeftLabelEl.textContent = L().time_left + (isCountdown ? (L().countdown_suffix || '') : '');
   }
   function isCountdownActive() {
     const overlayActive = !!overlayEl && !overlayEl.classList.contains('hidden');
     return overlayActive || !!restEndTime;
   }
-  function lang(){ return (langSelect && langSelect.value) || savedLang; }
 
-  // ---------- UI events ----------
+  // -------- UI events --------
   langSelect?.addEventListener('change', () => {
-    localStorage.setItem('pt_lang', lang());
-    applyI18n(lang());
+    localStorage.setItem('pt_lang', langSelect.value);
+    applyI18n(langSelect.value);
   });
 
   modeSelect?.addEventListener('change', () => {
@@ -192,17 +190,18 @@
     updateTimeLeftDisplay();
   });
 
+  countdownSoundEl?.addEventListener('change', () => {
+    localStorage.setItem('pt_cd_sound', countdownSoundEl.value);
+  });
+
   function showPanelFor(mode) {
     panels.forEach(p => {
-      if (p.classList.contains('common')) {
-        p.classList.remove('hidden'); // jamais masqué
-      } else {
-        p.classList.toggle('hidden', p.getAttribute('data-mode') !== mode);
-      }
+      if (p.classList.contains('common')) p.classList.remove('hidden');
+      else p.classList.toggle('hidden', p.getAttribute('data-mode') !== mode);
     });
   }
 
-  // ---------- Audio ----------
+  // -------- Audio --------
   function ensureAudio() {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -224,7 +223,44 @@
     osc.start(time); osc.stop(time + clickLen + 0.02);
   }
 
-  // ---------- Accel cadence ----------
+  // --- Bips de compte à rebours (pitches) ---
+  function beepOnce(freq = 800, ms = 140) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    const vol = Math.max(0.0001, masterGain?.gain?.value ?? 0.6);
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(Math.max(1e-4, vol * 0.001), audioCtx.currentTime + ms/1000);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(); osc.stop(audioCtx.currentTime + ms/1000 + 0.05);
+  }
+  function beepForStep(stepIdx) {
+    // 0: "4", 1:"3", 2:"2", 3:"1", 4:"GO"
+    const map = [700, 780, 860, 940, 1200];
+    beepOnce(map[Math.min(stepIdx, map.length-1)], stepIdx === 4 ? 200 : 140);
+  }
+
+  // --- Voix compte à rebours ---
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return false;
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = (langSelect?.value || savedLang) === 'fr' ? 'fr-FR' : 'en-US';
+      u.rate = 1.0; u.pitch = 1.0; u.volume = safeNum(volEl?.value, 60)/100;
+      const voices = window.speechSynthesis.getVoices();
+      const v = voices.find(v => v.lang?.toLowerCase().startsWith(u.lang.toLowerCase()));
+      if (v) u.voice = v;
+      window.speechSynthesis.speak(u);
+      return true;
+    } catch { return false; }
+  }
+  function cancelSpeech() {
+    try { window.speechSynthesis?.cancel(); } catch {}
+  }
+
+  // -------- Cadence progressive --------
   function accelBpmAt(elapsed) {
     const b0 = clamp(safeNum(startBpmEl?.value, 40), 20, 300);
     const b1 = clamp(safeNum(endBpmEl?.value, 50), 20, 300);
@@ -235,20 +271,15 @@
     return b0 + (b1 - b0) * (elapsed / T);
   }
 
-  // ---------- Scheduler ----------
+  // -------- Scheduler --------
   function scheduler() {
     if (!audioCtx) return;
-
-    // Fin auto
-    if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) {
-      stop(true);
-      return;
-    }
+    if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) { stop(true); return; }
 
     while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
       scheduleClick(nextNoteTime);
 
-      let interval = 0.5; // fallback
+      let interval = 0.5;
       if (currentMode === MODES.ACCEL) {
         const elapsed = Math.max(0, nextNoteTime - startTime);
         const bpm = Math.max(1, accelBpmAt(elapsed));
@@ -274,12 +305,7 @@
 
   function updateReadout() {
     if (!audioCtx) return;
-
-    if (!isPlaying) {
-      bpmNowEl && (bpmNowEl.textContent = '—');
-      updateTimeLeftDisplay();
-      return;
-    }
+    if (!isPlaying) { bpmNowEl && (bpmNowEl.textContent = '—'); updateTimeLeftDisplay(); return; }
 
     if (currentMode === MODES.ACCEL) {
       const elapsed = Math.max(0, audioCtx.currentTime - startTime);
@@ -302,9 +328,7 @@
     return `${m}:${ss}`;
   }
   function updateTimeLeftDisplay() {
-    if (!timeLeftEl) return;
-    if (!audioCtx) { timeLeftEl.textContent = '—'; return; }
-
+    if (!timeLeftEl || !audioCtx) return;
     if (sessionEndTime) {
       const left = sessionEndTime - audioCtx.currentTime;
       timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
@@ -318,7 +342,6 @@
       setTimeLeftLabel(false);
     }
   }
-
   function startRestUI() {
     if (restRafId) cancelAnimationFrame(restRafId);
     const loop = () => {
@@ -334,51 +357,64 @@
     updateTimeLeftDisplay();
   }
 
-  // ---------- Countdown ----------
+  // -------- Countdown with sound --------
+  function playCountdownCue(stepIdx) {
+    const mode = countdownSoundEl?.value || 'beep';
+    if (mode === 'none') return;
+
+    if (mode === 'beep') {
+      // "4,3,2,1" bips, "GO" plus aigu/long
+      beepForStep(stepIdx);
+      return;
+    }
+
+    if (mode === 'voice') {
+      const words = L().voice_steps || (langSelect?.value === 'fr' ? ["quatre","trois","deux","un","partez"] : ["four","three","two","one","go"]);
+      const txt = words[Math.min(stepIdx, words.length - 1)];
+      if (txt) speak(txt);
+    }
+  }
+
   function runCountdown() {
     return new Promise((resolve, reject) => {
-      // Si pas d’overlay, on fait un simple délai 4s sans planter
-      if (!overlayEl || !countdownEl) {
-        console.warn('Countdown overlay missing → fallback delay.');
-        setTimeLeftLabel(true);
-        const t0 = performance.now();
-        const tick = () => {
-          const dt = performance.now() - t0;
-          if (countdownAbort) { setTimeLeftLabel(!!restEndTime); return reject(new Error('aborted')); }
-          if (dt >= 4000) { setTimeLeftLabel(!!restEndTime); return resolve(); }
-          requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-        return;
-      }
-
+      // Fallback si overlay absent
+      const hasOverlay = overlayEl && countdownEl;
       countdownAbort = false;
-      overlayEl.classList.remove('hidden');
       setTimeLeftLabel(true);
 
       const steps = ['4','3','2','1','GO'];
       let idx = 0;
+
+      if (hasOverlay) overlayEl.classList.remove('hidden');
+
       (function next() {
         if (countdownAbort) {
-          overlayEl.classList.add('hidden');
+          if (hasOverlay) overlayEl.classList.add('hidden');
+          cancelSpeech();
           setTimeLeftLabel(!!restEndTime);
           return reject(new Error('aborted'));
         }
-        countdownEl.textContent = steps[idx];
+        if (hasOverlay) countdownEl.textContent = steps[idx];
+
+        // 🔊 jouer le cue pour ce step
+        playCountdownCue(idx);
+
         idx++;
-        if (idx < steps.length) setTimeout(next, 1000);
-        else setTimeout(() => {
-          overlayEl.classList.add('hidden');
-          setTimeLeftLabel(!!restEndTime);
-          resolve();
-        }, 400);
+        if (idx < steps.length) {
+          setTimeout(next, 1000);
+        } else {
+          setTimeout(() => {
+            if (hasOverlay) overlayEl.classList.add('hidden');
+            setTimeLeftLabel(!!restEndTime);
+            resolve();
+          }, 300);
+        }
       })();
     });
   }
 
-  // ---------- Start / Stop ----------
+  // -------- Start / Stop --------
   async function start() {
-    // Annule un redémarrage planifié
     if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
     stopRestUI();
 
@@ -390,23 +426,20 @@
     ensureAudio();
     await audioCtx.resume();
 
-    // Compte à rebours
-    setStatus(lang() === 'fr' ? 'prêt...' : 'ready...');
+    setStatus(L().start.toLowerCase() === 'start' ? 'ready...' : 'prêt...');
     startBtn && (startBtn.disabled = true);
     stopBtn && (stopBtn.disabled = false);
 
     try { await runCountdown(); }
-    catch { setStatus(lang() === 'fr' ? 'interrompu' : 'aborted'); startBtn && (startBtn.disabled = false); stopBtn && (stopBtn.disabled = true); return; }
+    catch { setStatus((langSelect?.value || savedLang) === 'fr' ? 'interrompu' : 'aborted'); startBtn && (startBtn.disabled = false); stopBtn && (stopBtn.disabled = true); return; }
 
-    // Lecture
     isPlaying = true; manualStop = false;
-    setStatus(lang() === 'fr' ? 'lecture' : 'playing');
+    setStatus((langSelect?.value || savedLang) === 'fr' ? 'lecture' : 'playing');
     if (masterGain && volEl) masterGain.gain.value = safeNum(volEl.value, 60) / 100;
 
     startTime = audioCtx.currentTime + 0.1;
     nextNoteTime = startTime;
 
-    // Fin auto de session (relative à startTime)
     sessionEndTime = null; lastRandomBpm = null;
     if (currentMode === MODES.ACCEL) {
       const T = Math.max(0, safeNum(rampEl?.value, 0));
@@ -426,23 +459,23 @@
 
   function stop(finished = false) {
     countdownAbort = true;
+    cancelSpeech();
+
     if (!audioCtx && !finished) return;
 
     isPlaying = false;
-    const fr = lang() === 'fr';
+    const fr = (langSelect?.value || savedLang) === 'fr';
     setStatus(finished ? (fr ? 'terminé' : 'finished') : (fr ? 'arrêté' : 'stopped'));
 
-    // Par défaut
     startBtn && (startBtn.disabled = false);
     stopBtn && (stopBtn.disabled = true);
 
-    // Repos (auto-restart) ?
+    // Repos auto ?
     const wantRestart = !!autoRestartEl?.checked;
     const delaySec = Math.max(1, safeNum(autoRestartDelayEl?.value, 5));
     if (finished && wantRestart && !manualStop) {
       stopBtn && (stopBtn.disabled = false);
       startBtn && (startBtn.disabled = false);
-
       setStatus(fr ? `compte à rebours avant redémarrage` : `countdown before restart`);
       if (audioCtx) {
         restEndTime = audioCtx.currentTime + delaySec;
@@ -468,7 +501,7 @@
     updateTimeLeftDisplay();
   }
 
-  // ---------- Wiring ----------
+  // -------- Wiring --------
   startBtn?.addEventListener('click', start);
   stopBtn?.addEventListener('click', () => {
     manualStop = true;
@@ -491,7 +524,6 @@
     if (e.code === 'Space') { e.preventDefault(); if (startBtn?.disabled) stop(); else start(); }
   });
 
-  // Number guards
   [startBpmEl, endBpmEl, steadyBpmEl, minBpmEl, maxBpmEl].forEach(inp => {
     inp?.addEventListener('change', () => { inp.value = clamp(safeNum(inp.value, 0), 20, 300); });
   });
@@ -499,6 +531,26 @@
     inp?.addEventListener('change', () => { inp.value = Math.max(0, safeNum(inp.value, 0)); });
   });
 
-  // ---------- Utils ----------
+  function updateTimeLeftDisplay() {
+    if (!timeLeftEl || !audioCtx) return;
+    if (sessionEndTime) {
+      const left = sessionEndTime - audioCtx.currentTime;
+      timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
+      setTimeLeftLabel(false);
+    } else if (restEndTime) {
+      const left = restEndTime - audioCtx.currentTime;
+      timeLeftEl.textContent = left > 0 ? secondsToMMSS(left) : '0:00';
+      setTimeLeftLabel(true);
+    } else {
+      timeLeftEl.textContent = '—';
+      setTimeLeftLabel(false);
+    }
+  }
+  function secondsToMMSS(s) {
+    s = Math.max(0, Math.floor(s));
+    const m = Math.floor(s / 60);
+    const ss = (s % 60).toString().padStart(2, '0');
+    return `${m}:${ss}`;
+  }
   function setStatus(text) { statusEl && (statusEl.textContent = text); }
 })();
