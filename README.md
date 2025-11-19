@@ -5,7 +5,7 @@
 ---
 ## Capture d’écran
 <p align="center">
-  <img src="docs/screenshots/home-fr.png" alt="Accueil FR" width="360">
+  <img src="docs/screenshots/home-fr.png" alt="Accueil FR" width="400">
 </p>
 
 ## 🇫🇷 FR — À propos
@@ -61,7 +61,7 @@ L’application est une **PWA hors-ligne** et **empêche la mise en veille** pen
 ---
 ## Screenchot
 <p align="center">
-  <img src="docs/screenshots/home-en.png" alt="Home EN" width="360">
+  <img src="docs/screenshots/home-en.png" alt="Home EN" width="400">
 </p>
 
 ## 🇬🇧 EN — About
