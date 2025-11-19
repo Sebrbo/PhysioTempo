@@ -3,7 +3,7 @@
 **Lien direct / Live app** → https://sebrbo.github.io/PhysioTempo/
 
 ---
-## Captures d’écran
+## Capture d’écran
 ![Accueil FR](docs/screenshots/home-fr.png)
 ## 🇫🇷 FR — À propos
 
