@@ -7,7 +7,6 @@
 <p align="center">
   <img src="docs/screenshots/home-fr.png" alt="Accueil FR" width="360">
 </p>
-![Accueil FR](docs/screenshots/home-fr.png)
 ## 🇫🇷 FR — À propos
 
 **PhysioTempo** est un outil de cadence pour la rééducation, simple et bilingue (FR/EN). Il propose **trois modes** :
@@ -60,7 +59,9 @@ L’application est une **PWA hors-ligne** et **empêche la mise en veille** pen
 
 ---
 ## Screenchot
-![Home EN](docs/screenshots/home-en.png)
+<p align="center">
+  <img src="docs/screenshots/home-en.png" alt="Home EN" width="360">
+</p>
 ## 🇬🇧 EN — About
 
 **PhysioTempo** is a simple, bilingual (FR/EN) rehab cadence trainer with **three modes**:
