@@ -7,6 +7,7 @@
 <p align="center">
   <img src="docs/screenshots/home-fr.png" alt="Accueil FR" width="360">
 </p>
+
 ## 🇫🇷 FR — À propos
 
 **PhysioTempo** est un outil de cadence pour la rééducation, simple et bilingue (FR/EN). Il propose **trois modes** :
