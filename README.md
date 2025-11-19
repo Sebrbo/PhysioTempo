@@ -4,6 +4,9 @@
 
 ---
 ## Capture d’écran
+<p align="center">
+  <img src="docs/screenshots/home-fr.png" alt="Accueil FR" width="360">
+</p>
 ![Accueil FR](docs/screenshots/home-fr.png)
 ## 🇫🇷 FR — À propos
 
