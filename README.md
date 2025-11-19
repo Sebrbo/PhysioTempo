@@ -3,7 +3,8 @@
 **Lien direct / Live app** → https://sebrbo.github.io/PhysioTempo/
 
 ---
-
+## Captures d’écran
+![Accueil FR](docs/screenshots/home-fr.png)
 ## 🇫🇷 FR — À propos
 
 **PhysioTempo** est un outil de cadence pour la rééducation, simple et bilingue (FR/EN). Il propose **trois modes** :
@@ -55,7 +56,8 @@ L’application est une **PWA hors-ligne** et **empêche la mise en veille** pen
 - **Assets** (icônes, images, textes) : **CC BY-NC 4.0** (voir `LICENSE-CC-BY-NC-4.0.md`).
 
 ---
-
+## Screenchot
+![Home EN](docs/screenshots/home-en.png)
 ## 🇬🇧 EN — About
 
 **PhysioTempo** is a simple, bilingual (FR/EN) rehab cadence trainer with **three modes**:
