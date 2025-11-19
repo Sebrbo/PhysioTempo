@@ -1,15 +1,21 @@
 /*!
- * PhysioTempo — iOS-proof countdown (beep/voice with fallbacks) + Wake Lock
- * Build: 2025-11-19 v12
+ * PhysioTempo — no UI volume, boosted output + compressor + iOS fixes + Wake Lock
+ * Build: 2025-11-19 v13
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
   'use strict';
 
-  // ---------- Modes ----------
-  const MODES = { ACCEL: 'accel', STEADY: 'steady', RANDOM: 'random' };
+  // ---------- Config volume ----------
+  // Gain global envoyé au système (0.0–2.0 recommandé)
+  const MASTER_GAIN = 1.0;
+  // Niveau relatif des bips de TEMPO (0.0–2.0)
+  const VOL_TEMPO = 1.2;
+  // Niveau relatif du COMPTE À REBOURS (bips/voix via WebAudio) (0.0–2.0)
+  const VOL_COUNTDOWN = 1.4;
 
-  // ---------- Helpers ----------
+  // ---------- Modes / helpers ----------
+  const MODES = { ACCEL: 'accel', STEADY: 'steady', RANDOM: 'random' };
   const $ = (sel) => document.querySelector(sel);
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const safeNum = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
@@ -97,60 +103,46 @@
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
-
   const steadyBpmEl  = $('#steadyBpm');
   const steadySecsEl = $('#steadySeconds');
-
   const minBpmEl     = $('#minBpm');
   const maxBpmEl     = $('#maxBpm');
   const randomSecsEl = $('#randomSeconds');
-
-  const volEl    = $('#volume');
   const bpmNowEl = $('#bpmNow');
   const statusEl = $('#status');
   const timeLeftEl = $('#timeLeft');
   const timeLeftLabelEl = document.querySelector('small.i18n[data-key="time_left"]');
-
   const startBtn = $('#startBtn');
   const stopBtn  = $('#stopBtn');
   const presetBtn = $('#preset');
   const langSelect = $('#langSelect');
   const modeSelect = $('#mode');
   const hintEl   = $('#hintText');
-
   const autoRestartEl = $('#autoRestart');
   const autoRestartDelayEl = $('#autoRestartDelay');
   const countdownSoundEl = $('#countdownSound');  // Muet/Bip/Voix
-
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
-
-  // Optionnel : petite note iOS dans le HTML (affichée seulement sur iOS)
   const iosVoiceNoteEl = $('#iosVoiceNote');
   if (iosVoiceNoteEl) iosVoiceNoteEl.style.display = isIOS ? 'block' : 'none';
-
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
   // ---------- State ----------
   let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
-  let audioCtx = null, masterGain = null;
+  let audioCtx = null, masterGain = null, compressor = null;
   let isPlaying = false;
   let startTime = 0, nextNoteTime = 0;
   let lookaheadTimer = null, rafId = null;
   let sessionEndTime = null, lastRandomBpm = null;
-
   let countdownAbort = false;
   let autoRestartTimerId = null;
   let manualStop = false;
   let restEndTime = null, restRafId = null;
-
-  let audioUnlocked = false;   // iOS unlock
-  let lastCdStep = -1;         // anti-doublon CR
-
-  // Wake Lock (anti-veille)
+  let audioUnlocked = false;
+  let lastCdStep = -1;
   let wakeLock = null;
 
-  // Précharge facultative de voix audio locales (si tu ajoutes /audio/fr/*.mp3 et /audio/en/*.mp3)
+  // Précharge facultative des fichiers audio (si tu en ajoutes)
   const voiceBuffers = { fr: {}, en: {} };
 
   // Scheduler params
@@ -222,16 +214,27 @@
     });
   }
 
-  // ---------- Audio ----------
+  // ---------- Audio graph ----------
   function ensureAudio() {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Master gain → compressor → destination
       masterGain = audioCtx.createGain();
-      masterGain.gain.value = safeNum(volEl?.value, 60) / 100;
-      masterGain.connect(audioCtx.destination);
+      masterGain.gain.value = clamp(MASTER_GAIN, 0.0, 2.0);
+
+      compressor = audioCtx.createDynamicsCompressor();
+      // réglage doux : limite les pics si VOL_* élevés
+      compressor.threshold.value = -12;
+      compressor.knee.value = 4;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+
+      masterGain.connect(compressor);
+      compressor.connect(audioCtx.destination);
     }
   }
-  // iOS: déverrouille l’audio après geste utilisateur
   function unlockAudioOnce() {
     if (audioUnlocked) return;
     ensureAudio();
@@ -245,9 +248,10 @@
   }
 
   function scheduleClick(time) {
+    // Bip de TEMPO (pendant la session)
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    const g = Math.max(0.0001, masterGain.gain.value);
+    const g = clamp(VOL_TEMPO, 0.0001, 2.0);
     osc.frequency.value = clickHz;
     gain.gain.setValueAtTime(0, time);
     gain.gain.linearRampToValueAtTime(g, time + 0.002);
@@ -257,12 +261,12 @@
     osc.start(time); osc.stop(time + clickLen + 0.02);
   }
 
-  // ---------- Bips de compte à rebours ----------
-  function beepOnce(freq = 800, ms = 140) {
+  // Bips du compte à rebours
+  function beepOnceCountdown(freq = 800, ms = 140) {
     if (!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    const vol = Math.max(0.0001, (masterGain?.gain?.value ?? 0.6));
+    const vol = clamp(VOL_COUNTDOWN, 0.0001, 2.0);
     osc.frequency.value = freq;
     g.gain.setValueAtTime(0, audioCtx.currentTime);
     g.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.01);
@@ -272,7 +276,7 @@
   }
   function beepForStep(stepIdx) {
     const map = [700, 780, 860, 940, 1200]; // GO plus aigu
-    beepOnce(map[Math.min(stepIdx, map.length-1)], stepIdx === 4 ? 200 : 140);
+    beepOnceCountdown(map[Math.min(stepIdx, map.length-1)], stepIdx === 4 ? 200 : 140);
   }
 
   // ---------- Voix (TTS) ----------
@@ -281,12 +285,7 @@
       const done = () => resolve(window.speechSynthesis.getVoices());
       const id = setTimeout(done, timeout);
       try { window.speechSynthesis.getVoices(); } catch {}
-      try {
-        window.speechSynthesis.onvoiceschanged = () => {
-          clearTimeout(id);
-          done();
-        };
-      } catch {}
+      try { window.speechSynthesis.onvoiceschanged = () => { clearTimeout(id); done(); }; } catch {}
     });
   }
   async function speak(text) {
@@ -297,7 +296,8 @@
     const lang = isFr ? 'fr-FR' : 'en-US';
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang; u.rate = 1.0; u.pitch = 1.0;
-    u.volume = Math.max(0.0001, (Number(volEl?.value) || 60) / 100);
+    // SpeechSynthesis volume ∈ [0..1] → on borne VOL_COUNTDOWN
+    u.volume = Math.min(1, Math.max(0, VOL_COUNTDOWN));
     const v = voices.find(v => v.lang?.toLowerCase().startsWith(lang.toLowerCase()));
     if (v) u.voice = v;
     try { window.speechSynthesis.speak(u); return true; }
@@ -305,7 +305,7 @@
   }
   function cancelSpeech() { try { window.speechSynthesis?.cancel(); } catch {} }
 
-  // ---------- Voix via fichiers audio locaux (facultatif) ----------
+  // ---------- Voix via fichiers audio (facultatif) ----------
   async function preloadVoiceAudio() {
     try {
       ensureAudio();
@@ -319,9 +319,9 @@
           if (!resp.ok) continue;
           const arr = await resp.arrayBuffer();
           voiceBuffers[iso][i] = await audioCtx.decodeAudioData(arr);
-        } catch { /* ignore */ }
+        } catch {}
       }
-    } catch { /* ignore */ }
+    } catch {}
   }
   async function playVoiceAudio(stepIdx) {
     try {
@@ -333,7 +333,7 @@
       const src = audioCtx.createBufferSource();
       src.buffer = buf;
       const g = audioCtx.createGain();
-      const vol = Math.max(0.0001, (Number(volEl?.value) || 60)/100);
+      const vol = clamp(VOL_COUNTDOWN, 0.0001, 2.0);
       g.gain.setValueAtTime(vol, audioCtx.currentTime);
       src.connect(g); g.connect(masterGain);
       src.start();
@@ -449,7 +449,7 @@
     if (mode === 'beep') { beepForStep(stepIdx); return; }
 
     if (mode === 'voice') {
-      // 1) Essaye audio local (si présent), 2) sinon TTS, 3) sinon bip
+      // 1) essaye audio local (si présent), 2) TTS, 3) bip
       playVoiceAudio(stepIdx).then(ok => {
         if (ok) return;
         const words = L().voice_steps;
@@ -493,7 +493,7 @@
     });
   }
 
-  // ---------- Wake Lock ----------
+  // ---------- Wake Lock (anti-veille) ----------
   async function requestWakeLock() {
     try {
       if ('wakeLock' in navigator && navigator.wakeLock?.request) {
@@ -527,15 +527,14 @@
     updateHintText();
 
     ensureAudio();
-    unlockAudioOnce();              // iOS: déverrouille l’audio
+    unlockAudioOnce();
     await audioCtx.resume();
-    requestWakeLock();              // Anti-veille pendant session (et pause si auto-restart)
+    requestWakeLock();
 
     setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'prêt...' : 'ready...');
     startBtn && (startBtn.disabled = true);
     stopBtn && (stopBtn.disabled = false);
 
-    // Précharge silencieux des voix audio (si présentes)
     preloadVoiceAudio().catch(()=>{});
 
     try { await runCountdown(); }
@@ -543,7 +542,6 @@
 
     isPlaying = true; manualStop = false;
     setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'lecture' : 'playing');
-    if (masterGain && volEl) masterGain.gain.value = safeNum(volEl.value, 60) / 100;
 
     startTime = audioCtx.currentTime + 0.1;
     nextNoteTime = startTime;
@@ -578,11 +576,9 @@
     startBtn && (startBtn.disabled = false);
     stopBtn && (stopBtn.disabled = true);
 
-    // Repos auto ?
     const wantRestart = !!autoRestartEl?.checked;
     const delaySec = Math.max(1, safeNum(autoRestartDelayEl?.value, 5));
     if (finished && wantRestart && !manualStop) {
-      // On garde le wake lock pendant la pause pour éviter la veille
       stopBtn && (stopBtn.disabled = false);
       startBtn && (startBtn.disabled = false);
       setStatus(fr ? `compte à rebours avant redémarrage` : `countdown before restart`);
@@ -601,7 +597,7 @@
       if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
       stopRestUI();
       setTimeLeftLabel(false);
-      releaseWakeLock(); // pas de redémarrage => libérer
+      releaseWakeLock();
     }
 
     if (lookaheadTimer) { clearInterval(lookaheadTimer); lookaheadTimer = null; }
@@ -619,7 +615,6 @@
     stopRestUI();
     stop(false);
   });
-  volEl?.addEventListener('input', () => { if (masterGain) masterGain.gain.value = safeNum(volEl.value, 60) / 100; });
   presetBtn?.addEventListener('click', () => {
     if (modeSelect) modeSelect.value = MODES.ACCEL;
     currentMode = MODES.ACCEL;
@@ -629,9 +624,6 @@
     if (startBpmEl) startBpmEl.value = 40;
     if (endBpmEl)   endBpmEl.value   = 50;
     if (rampEl)     rampEl.value     = 120;
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); if (startBtn?.disabled) stop(); else start(); }
   });
 
   [startBpmEl, endBpmEl, steadyBpmEl, minBpmEl, maxBpmEl].forEach(inp => {
