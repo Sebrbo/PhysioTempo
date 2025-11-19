@@ -1,6 +1,6 @@
 /*!
- * PhysioTempo — iOS-proof countdown (TTS + local audio fallback + beep)
- * Build: 2025-11-17 v11
+ * PhysioTempo — iOS-proof countdown (beep/voice with fallbacks) + Wake Lock
+ * Build: 2025-11-19 v12
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
@@ -120,10 +120,14 @@
 
   const autoRestartEl = $('#autoRestart');
   const autoRestartDelayEl = $('#autoRestartDelay');
-  const countdownSoundEl = $('#countdownSound');  // optionnel (Muet/Bip/Voix)
+  const countdownSoundEl = $('#countdownSound');  // Muet/Bip/Voix
 
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
+
+  // Optionnel : petite note iOS dans le HTML (affichée seulement sur iOS)
+  const iosVoiceNoteEl = $('#iosVoiceNote');
+  if (iosVoiceNoteEl) iosVoiceNoteEl.style.display = isIOS ? 'block' : 'none';
 
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
@@ -143,13 +147,13 @@
   let audioUnlocked = false;   // iOS unlock
   let lastCdStep = -1;         // anti-doublon CR
 
-  // Préchargement des voix audio locales (si présentes)
-  const VOICE_AUDIO = {
-    fr: { 0: 'audio/fr/4.mp3', 1: 'audio/fr/3.mp3', 2: 'audio/fr/2.mp3', 3: 'audio/fr/1.mp3', 4: 'audio/fr/go.mp3' },
-    en: { 0: 'audio/en/4.mp3', 1: 'audio/en/3.mp3', 2: 'audio/en/2.mp3', 3: 'audio/en/1.mp3', 4: 'audio/en/go.mp3' }
-  };
+  // Wake Lock (anti-veille)
+  let wakeLock = null;
+
+  // Précharge facultative de voix audio locales (si tu ajoutes /audio/fr/*.mp3 et /audio/en/*.mp3)
   const voiceBuffers = { fr: {}, en: {} };
 
+  // Scheduler params
   const scheduleAheadTime = 0.15; // s
   const lookahead = 25;           // ms
   const clickHz = 880;
@@ -163,7 +167,6 @@
   applyI18n(savedLang);
   setStatus('au repos');
 
-  // Préférence son CR
   const savedCd = localStorage.getItem('pt_cd_sound') || 'beep';
   if (countdownSoundEl) countdownSoundEl.value = savedCd;
 
@@ -197,7 +200,6 @@
   langSelect?.addEventListener('change', () => {
     localStorage.setItem('pt_lang', langSelect.value);
     applyI18n(langSelect.value);
-    // re-précharger les sons audio de voix pour la nouvelle langue
     preloadVoiceAudio().catch(()=>{});
   });
 
@@ -303,27 +305,29 @@
   }
   function cancelSpeech() { try { window.speechSynthesis?.cancel(); } catch {} }
 
-  // ---------- Voix via fichiers audio locaux ----------
+  // ---------- Voix via fichiers audio locaux (facultatif) ----------
   async function preloadVoiceAudio() {
     try {
       ensureAudio();
       const iso = (langSelect?.value || savedLang).startsWith('fr') ? 'fr' : 'en';
-      const manifest = VOICE_AUDIO[iso] || {};
-      await Promise.all(Object.entries(manifest).map(async ([k, url]) => {
-        if (voiceBuffers[iso][k]) return;
+      const files = ['4.mp3','3.mp3','2.mp3','1.mp3','go.mp3'];
+      for (let i = 0; i < files.length; i++) {
+        if (voiceBuffers[iso][i]) continue;
+        const url = `audio/${iso}/${files[i]}`;
         try {
-          const resp = await fetch(url);
-          if (!resp.ok) return;
+          const resp = await fetch(url, { cache: 'force-cache' });
+          if (!resp.ok) continue;
           const arr = await resp.arrayBuffer();
-          voiceBuffers[iso][k] = await audioCtx.decodeAudioData(arr);
+          voiceBuffers[iso][i] = await audioCtx.decodeAudioData(arr);
         } catch { /* ignore */ }
-      }));
+      }
     } catch { /* ignore */ }
   }
   async function playVoiceAudio(stepIdx) {
     try {
       ensureAudio();
       const iso = (langSelect?.value || savedLang).startsWith('fr') ? 'fr' : 'en';
+      if (!voiceBuffers[iso][stepIdx]) await preloadVoiceAudio();
       const buf = voiceBuffers[iso][stepIdx];
       if (!buf) return false;
       const src = audioCtx.createBufferSource();
@@ -336,8 +340,6 @@
       return true;
     } catch { return false; }
   }
-  // Précharge “en douceur”
-  preloadVoiceAudio().catch(()=>{});
 
   // ---------- Cadence progressive ----------
   function accelBpmAt(elapsed) {
@@ -351,14 +353,13 @@
   }
 
   // ---------- Scheduler ----------
-  const scheduleAheadTime = 0.15;
-  const lookahead = 25;
-
   function scheduler() {
     if (!audioCtx) return;
     if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) { stop(true); return; }
+
     while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
       scheduleClick(nextNoteTime);
+
       let interval = 0.5;
       if (currentMode === MODES.ACCEL) {
         const elapsed = Math.max(0, nextNoteTime - startTime);
@@ -374,6 +375,7 @@
         const bpm = lastRandomBpm = lo + Math.random() * (hi - lo);
         interval = 60 / bpm;
       }
+
       if (sessionEndTime && nextNoteTime + interval > sessionEndTime) {
         nextNoteTime = sessionEndTime + 1;
       } else {
@@ -385,6 +387,7 @@
   function updateReadout() {
     if (!audioCtx) return;
     if (!isPlaying) { bpmNowEl && (bpmNowEl.textContent = '—'); updateTimeLeftDisplay(); return; }
+
     if (currentMode === MODES.ACCEL) {
       const elapsed = Math.max(0, audioCtx.currentTime - startTime);
       const bpm = Math.max(1, accelBpmAt(elapsed));
@@ -394,6 +397,7 @@
     } else {
       bpmNowEl && (bpmNowEl.textContent = lastRandomBpm ? lastRandomBpm.toFixed(1) : '—');
     }
+
     updateTimeLeftDisplay();
     rafId = requestAnimationFrame(updateReadout);
   }
@@ -445,25 +449,14 @@
     if (mode === 'beep') { beepForStep(stepIdx); return; }
 
     if (mode === 'voice') {
-      // Sur iOS, on privilégie les fichiers audio locaux si présents
-      if (isIOS) {
-        playVoiceAudio(stepIdx).then(ok => {
-          if (!ok) {
-            // Dernière chance : TTS (souvent instable) puis bip
-            const words = L().voice_steps;
-            const txt = words[Math.min(stepIdx, words.length - 1)];
-            if (!txt) return;
-            speak(txt).then(spoke => { if (!spoke) beepForStep(stepIdx); });
-          }
-        });
-        return;
-      }
-      // Desktop/Android : TTS direct, bip si échec
-      const words = L().voice_steps;
-      const txt = words[Math.min(stepIdx, words.length - 1)];
-      if (!txt) return;
-      speak(txt).then(ok => { if (!ok) beepForStep(stepIdx); });
-      return;
+      // 1) Essaye audio local (si présent), 2) sinon TTS, 3) sinon bip
+      playVoiceAudio(stepIdx).then(ok => {
+        if (ok) return;
+        const words = L().voice_steps;
+        const txt = words[Math.min(stepIdx, words.length - 1)];
+        if (!txt) return;
+        speak(txt).then(spoke => { if (!spoke) beepForStep(stepIdx); });
+      });
     }
   }
 
@@ -500,6 +493,29 @@
     });
   }
 
+  // ---------- Wake Lock ----------
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator && navigator.wakeLock?.request) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => {});
+        document.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
+      }
+    } catch {}
+  }
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible' && !wakeLock && isPlaying) {
+      requestWakeLock();
+    }
+  }
+  async function releaseWakeLock() {
+    try { await wakeLock?.release(); } catch {}
+    wakeLock = null;
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }
+  window.addEventListener('pagehide', releaseWakeLock);
+  window.addEventListener('beforeunload', releaseWakeLock);
+
   // ---------- Start / Stop ----------
   async function start() {
     if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
@@ -513,12 +529,13 @@
     ensureAudio();
     unlockAudioOnce();              // iOS: déverrouille l’audio
     await audioCtx.resume();
+    requestWakeLock();              // Anti-veille pendant session (et pause si auto-restart)
 
     setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'prêt...' : 'ready...');
     startBtn && (startBtn.disabled = true);
     stopBtn && (stopBtn.disabled = false);
 
-    // Précharge à nouveau les sons de voix (silencieux pour l’utilisateur)
+    // Précharge silencieux des voix audio (si présentes)
     preloadVoiceAudio().catch(()=>{});
 
     try { await runCountdown(); }
@@ -565,6 +582,7 @@
     const wantRestart = !!autoRestartEl?.checked;
     const delaySec = Math.max(1, safeNum(autoRestartDelayEl?.value, 5));
     if (finished && wantRestart && !manualStop) {
+      // On garde le wake lock pendant la pause pour éviter la veille
       stopBtn && (stopBtn.disabled = false);
       startBtn && (startBtn.disabled = false);
       setStatus(fr ? `compte à rebours avant redémarrage` : `countdown before restart`);
@@ -583,6 +601,7 @@
       if (autoRestartTimerId) { clearTimeout(autoRestartTimerId); autoRestartTimerId = null; }
       stopRestUI();
       setTimeLeftLabel(false);
+      releaseWakeLock(); // pas de redémarrage => libérer
     }
 
     if (lookaheadTimer) { clearInterval(lookaheadTimer); lookaheadTimer = null; }
