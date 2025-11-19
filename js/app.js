@@ -1,18 +1,15 @@
 /*!
- * PhysioTempo — no UI volume, boosted output + compressor + iOS fixes + Wake Lock
- * Build: 2025-11-19 v13
+ * PhysioTempo — no MP3 refs (TTS or Beep only) + iOS fixes + Wake Lock + boosted volume
+ * Build: 2025-11-19 v14
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
   'use strict';
 
-  // ---------- Config volume ----------
-  // Gain global envoyé au système (0.0–2.0 recommandé)
-  const MASTER_GAIN = 1.0;
-  // Niveau relatif des bips de TEMPO (0.0–2.0)
-  const VOL_TEMPO = 1.2;
-  // Niveau relatif du COMPTE À REBOURS (bips/voix via WebAudio) (0.0–2.0)
-  const VOL_COUNTDOWN = 1.4;
+  // ---------- Volume global (sans slider) ----------
+  const MASTER_GAIN   = 1.0; // 0.0–2.0
+  const VOL_TEMPO     = 1.2; // bip du tempo
+  const VOL_COUNTDOWN = 1.4; // signaux du compte à rebours (bip/voix)
 
   // ---------- Modes / helpers ----------
   const MODES = { ACCEL: 'accel', STEADY: 'steady', RANDOM: 'random' };
@@ -99,7 +96,7 @@
     }
   };
 
-  // ---------- DOM refs (null-safe) ----------
+  // ---------- DOM refs ----------
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
@@ -108,23 +105,29 @@
   const minBpmEl     = $('#minBpm');
   const maxBpmEl     = $('#maxBpm');
   const randomSecsEl = $('#randomSeconds');
+
   const bpmNowEl = $('#bpmNow');
   const statusEl = $('#status');
   const timeLeftEl = $('#timeLeft');
   const timeLeftLabelEl = document.querySelector('small.i18n[data-key="time_left"]');
+
   const startBtn = $('#startBtn');
   const stopBtn  = $('#stopBtn');
   const presetBtn = $('#preset');
   const langSelect = $('#langSelect');
   const modeSelect = $('#mode');
   const hintEl   = $('#hintText');
+
   const autoRestartEl = $('#autoRestart');
   const autoRestartDelayEl = $('#autoRestartDelay');
   const countdownSoundEl = $('#countdownSound');  // Muet/Bip/Voix
+
   const overlayEl = $('#overlay');
   const countdownEl = $('#countdown');
+
   const iosVoiceNoteEl = $('#iosVoiceNote');
   if (iosVoiceNoteEl) iosVoiceNoteEl.style.display = isIOS ? 'block' : 'none';
+
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
 
   // ---------- State ----------
@@ -134,18 +137,19 @@
   let startTime = 0, nextNoteTime = 0;
   let lookaheadTimer = null, rafId = null;
   let sessionEndTime = null, lastRandomBpm = null;
+
   let countdownAbort = false;
   let autoRestartTimerId = null;
   let manualStop = false;
   let restEndTime = null, restRafId = null;
+
   let audioUnlocked = false;
   let lastCdStep = -1;
+
+  // Wake Lock
   let wakeLock = null;
 
-  // Précharge facultative des fichiers audio (si tu en ajoutes)
-  const voiceBuffers = { fr: {}, en: {} };
-
-  // Scheduler params
+  // Planification
   const scheduleAheadTime = 0.15; // s
   const lookahead = 25;           // ms
   const clickHz = 880;
@@ -192,7 +196,6 @@
   langSelect?.addEventListener('change', () => {
     localStorage.setItem('pt_lang', langSelect.value);
     applyI18n(langSelect.value);
-    preloadVoiceAudio().catch(()=>{});
   });
 
   modeSelect?.addEventListener('change', () => {
@@ -219,12 +222,11 @@
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-      // Master gain → compressor → destination
+      // master → compressor → destination
       masterGain = audioCtx.createGain();
       masterGain.gain.value = clamp(MASTER_GAIN, 0.0, 2.0);
 
       compressor = audioCtx.createDynamicsCompressor();
-      // réglage doux : limite les pics si VOL_* élevés
       compressor.threshold.value = -12;
       compressor.knee.value = 4;
       compressor.ratio.value = 4;
@@ -247,8 +249,8 @@
     audioUnlocked = true;
   }
 
+  // Bip TEMPO (pendant la session)
   function scheduleClick(time) {
-    // Bip de TEMPO (pendant la session)
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     const g = clamp(VOL_TEMPO, 0.0001, 2.0);
@@ -261,7 +263,7 @@
     osc.start(time); osc.stop(time + clickLen + 0.02);
   }
 
-  // Bips du compte à rebours
+  // Bips COMPTE À REBOURS
   function beepOnceCountdown(freq = 800, ms = 140) {
     if (!audioCtx) return;
     const osc = audioCtx.createOscillator();
@@ -279,7 +281,7 @@
     beepOnceCountdown(map[Math.min(stepIdx, map.length-1)], stepIdx === 4 ? 200 : 140);
   }
 
-  // ---------- Voix (TTS) ----------
+  // ---------- Voix (TTS uniquement) ----------
   function waitForVoices(timeout = 1500) {
     return new Promise((resolve) => {
       const done = () => resolve(window.speechSynthesis.getVoices());
@@ -296,50 +298,13 @@
     const lang = isFr ? 'fr-FR' : 'en-US';
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang; u.rate = 1.0; u.pitch = 1.0;
-    // SpeechSynthesis volume ∈ [0..1] → on borne VOL_COUNTDOWN
-    u.volume = Math.min(1, Math.max(0, VOL_COUNTDOWN));
+    u.volume = Math.min(1, Math.max(0, VOL_COUNTDOWN)); // [0..1]
     const v = voices.find(v => v.lang?.toLowerCase().startsWith(lang.toLowerCase()));
     if (v) u.voice = v;
     try { window.speechSynthesis.speak(u); return true; }
     catch { return false; }
   }
   function cancelSpeech() { try { window.speechSynthesis?.cancel(); } catch {} }
-
-  // ---------- Voix via fichiers audio (facultatif) ----------
-  async function preloadVoiceAudio() {
-    try {
-      ensureAudio();
-      const iso = (langSelect?.value || savedLang).startsWith('fr') ? 'fr' : 'en';
-      const files = ['4.mp3','3.mp3','2.mp3','1.mp3','go.mp3'];
-      for (let i = 0; i < files.length; i++) {
-        if (voiceBuffers[iso][i]) continue;
-        const url = `audio/${iso}/${files[i]}`;
-        try {
-          const resp = await fetch(url, { cache: 'force-cache' });
-          if (!resp.ok) continue;
-          const arr = await resp.arrayBuffer();
-          voiceBuffers[iso][i] = await audioCtx.decodeAudioData(arr);
-        } catch {}
-      }
-    } catch {}
-  }
-  async function playVoiceAudio(stepIdx) {
-    try {
-      ensureAudio();
-      const iso = (langSelect?.value || savedLang).startsWith('fr') ? 'fr' : 'en';
-      if (!voiceBuffers[iso][stepIdx]) await preloadVoiceAudio();
-      const buf = voiceBuffers[iso][stepIdx];
-      if (!buf) return false;
-      const src = audioCtx.createBufferSource();
-      src.buffer = buf;
-      const g = audioCtx.createGain();
-      const vol = clamp(VOL_COUNTDOWN, 0.0001, 2.0);
-      g.gain.setValueAtTime(vol, audioCtx.currentTime);
-      src.connect(g); g.connect(masterGain);
-      src.start();
-      return true;
-    } catch { return false; }
-  }
 
   // ---------- Cadence progressive ----------
   function accelBpmAt(elapsed) {
@@ -449,14 +414,13 @@
     if (mode === 'beep') { beepForStep(stepIdx); return; }
 
     if (mode === 'voice') {
-      // 1) essaye audio local (si présent), 2) TTS, 3) bip
-      playVoiceAudio(stepIdx).then(ok => {
-        if (ok) return;
-        const words = L().voice_steps;
-        const txt = words[Math.min(stepIdx, words.length - 1)];
-        if (!txt) return;
-        speak(txt).then(spoke => { if (!spoke) beepForStep(stepIdx); });
-      });
+      const words = L().voice_steps || ((langSelect?.value || savedLang).startsWith('fr')
+        ? ["quatre","trois","deux","un","partez"]
+        : ["four","three","two","one","go"]);
+      const txt = words[Math.min(stepIdx, words.length - 1)];
+      if (!txt) return;
+      // TTS → si indisponible, bip
+      speak(txt).then(ok => { if (!ok) beepForStep(stepIdx); });
     }
   }
 
@@ -493,7 +457,7 @@
     });
   }
 
-  // ---------- Wake Lock (anti-veille) ----------
+  // ---------- Wake Lock ----------
   async function requestWakeLock() {
     try {
       if ('wakeLock' in navigator && navigator.wakeLock?.request) {
@@ -535,10 +499,13 @@
     startBtn && (startBtn.disabled = true);
     stopBtn && (stopBtn.disabled = false);
 
-    preloadVoiceAudio().catch(()=>{});
-
     try { await runCountdown(); }
-    catch { setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'interrompu' : 'aborted'); startBtn && (startBtn.disabled = false); stopBtn && (stopBtn.disabled = true); return; }
+    catch {
+      setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'interrompu' : 'aborted');
+      startBtn && (startBtn.disabled = false);
+      stopBtn && (stopBtn.disabled = true);
+      return;
+    }
 
     isPlaying = true; manualStop = false;
     setStatus((langSelect?.value || savedLang).startsWith('fr') ? 'lecture' : 'playing');
