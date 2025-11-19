@@ -119,3 +119,26 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   color: #031322; box-shadow: var(--shadow);
 }
 .overlay.hidden { display: none; }
+
+/* === Readout plus gros (Cadence actuelle / Statut / Temps restant) === */
+.readout {
+  gap: 1.25rem;               /* un peu plus d'air */
+}
+
+.readout small.muted {
+  font-size: clamp(0.9rem, 1.8vw, 1rem);
+  letter-spacing: .02em;
+}
+
+/* Valeurs (monospace) : très lisibles sur mobile/tablette */
+.readout .mono {
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: clamp(2.2rem, 6.5vw, 3.5rem); /* Statut & Temps restant */
+}
+
+/* Cadence actuelle (encore plus gros) */
+#bpmNow {
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
+}
