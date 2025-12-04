@@ -142,3 +142,61 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 #bpmNow {
   font-size: clamp(2.5rem, 8vw, 4.5rem);
 }
+
+/* ===== Readout : statut plus discret ===== */
+
+/* Mise en grille : BPM | Statut | Temps restant */
+.readout {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.75rem 2rem;
+  align-items: end;
+}
+
+/* Libellés au-dessus (Cadence actuelle / Statut / Temps restant) */
+.readout small.muted {
+  font-size: clamp(0.85rem, 1.3vw, 0.95rem);
+  letter-spacing: .02em;
+}
+
+/* Valeurs par défaut */
+.readout .mono {
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+
+/* On garde grand pour BPM et Temps restant */
+#bpmNow,
+#timeLeft {
+  font-size: clamp(2.2rem, 6.5vw, 3.5rem);
+}
+
+/* Statut : plus petit, plus discret, sur une seule ligne */
+#status {
+  font-size: clamp(1rem, 2.3vw, 1.4rem);
+  font-weight: 600;
+  opacity: 0.85;
+  white-space: nowrap;           /* évite d'occuper 3 lignes */
+  max-width: 22ch;               /* tronque proprement si trop long */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  justify-self: center;          /* vise le centre de la colonne */
+}
+
+/* Mobile : on met Statut en dessous sur toute la largeur */
+@media (max-width: 640px) {
+  .readout {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "bpm time"
+      "status status";
+  }
+  #bpmNow { grid-area: bpm; }
+  #timeLeft { grid-area: time; }
+  #status {
+    grid-area: status;
+    justify-self: center;
+    margin-top: .25rem;
+  }
+}
