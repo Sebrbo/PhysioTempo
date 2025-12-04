@@ -1,6 +1,6 @@
 /*!
- * PhysioTempo — no MP3 refs (TTS or Beep only) + iOS fixes + Wake Lock + boosted volume
- * Build: 2025-11-19 v14
+ * PhysioTempo — TTS or Beep only + iOS fixes + Wake Lock + boosted volume
+ * Build: 2025-11-19 v17
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
@@ -8,8 +8,7 @@
 
   // ---------- Volume global (sans slider) ----------
   const MASTER_GAIN   = 1.0; // 0.0–2.0
-  const VOL_TEMPO     = 1.2; // bip du tempo
-  const VOL_COUNTDOWN = 1.4; // signaux du compte à rebours (bip/voix)
+  const VOL_COUNTDOWN = 1.4; // niveau des signaux (bip/voix) CR & tempo
 
   // ---------- Modes / helpers ----------
   const MODES = { ACCEL: 'accel', STEADY: 'steady', RANDOM: 'random' };
@@ -34,7 +33,6 @@
       random_min_bpm_label: "Min cadence (bpm)",
       random_max_bpm_label: "Max cadence (bpm)",
       random_secs_label: "Duration (s)",
-      volume_label: "Volume",
       start_options: "Start & cycles",
       auto_restart_label: "Auto-restart",
       auto_restart_delay_label: "Restart delay (s)",
@@ -71,7 +69,6 @@
       random_min_bpm_label: "Cadence min (bpm)",
       random_max_bpm_label: "Cadence max (bpm)",
       random_secs_label: "Durée (s)",
-      volume_label: "Volume",
       start_options: "Démarrage & cycles",
       auto_restart_label: "Redémarrage automatique",
       auto_restart_delay_label: "Délai de redémarrage (s)",
@@ -152,8 +149,6 @@
   // Planification
   const scheduleAheadTime = 0.15; // s
   const lookahead = 25;           // ms
-  const clickHz = 880;
-  const clickLen = 0.03;
 
   // ---------- Init ----------
   const savedLang = localStorage.getItem('pt_lang') || (navigator.language?.startsWith('fr') ? 'fr' : 'en');
@@ -249,22 +244,8 @@
     audioUnlocked = true;
   }
 
-  // Bip TEMPO (pendant la session)
-  function scheduleClick(time) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    const g = clamp(VOL_TEMPO, 0.0001, 2.0);
-    osc.frequency.value = clickHz;
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(g, time + 0.002);
-    gain.gain.exponentialRampToValueAtTime(Math.max(1e-4, g * 0.001), time + clickLen);
-    gain.gain.setValueAtTime(0, time + clickLen + 0.01);
-    osc.connect(gain); gain.connect(masterGain);
-    osc.start(time); osc.stop(time + clickLen + 0.02);
-  }
-
-  // Bips COMPTE À REBOURS
-  function beepOnceCountdown(freq = 800, ms = 140) {
+  // ---------- Bips (CR & tempo) ----------
+  function beepOnceCountdown(freq = 800, ms = 0.14) {
     if (!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
@@ -272,13 +253,28 @@
     osc.frequency.value = freq;
     g.gain.setValueAtTime(0, audioCtx.currentTime);
     g.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.01);
-    g.gain.exponentialRampToValueAtTime(Math.max(1e-4, vol * 0.001), audioCtx.currentTime + ms/1000);
+    g.gain.exponentialRampToValueAtTime(Math.max(1e-4, vol * 0.001), audioCtx.currentTime + ms);
     osc.connect(g); g.connect(masterGain);
-    osc.start(); osc.stop(audioCtx.currentTime + ms/1000 + 0.05);
+    osc.start(); osc.stop(audioCtx.currentTime + ms + 0.05);
   }
   function beepForStep(stepIdx) {
     const map = [700, 780, 860, 940, 1200]; // GO plus aigu
-    beepOnceCountdown(map[Math.min(stepIdx, map.length-1)], stepIdx === 4 ? 200 : 140);
+    beepOnceCountdown(map[Math.min(stepIdx, map.length-1)], stepIdx === 4 ? 0.20 : 0.14);
+  }
+
+  // Bip de TEMPO au même "grain" que le compte à rebours (planifié dans le temps)
+  function scheduleTempoBeep(atTime, freq = 940, ms = 0.18) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    const vol = clamp(VOL_COUNTDOWN, 0.0001, 2.0);
+    osc.frequency.setValueAtTime(freq, atTime);
+    g.gain.setValueAtTime(0, atTime);
+    g.gain.linearRampToValueAtTime(vol, atTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(Math.max(1e-4, vol * 0.001), atTime + ms);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(atTime);
+    osc.stop(atTime + ms + 0.06);
   }
 
   // ---------- Voix (TTS uniquement) ----------
@@ -323,7 +319,8 @@
     if (sessionEndTime && audioCtx.currentTime >= sessionEndTime) { stop(true); return; }
 
     while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
-      scheduleClick(nextNoteTime);
+      // Bip de tempo : même grain que CR
+      scheduleTempoBeep(nextNoteTime);
 
       let interval = 0.5;
       if (currentMode === MODES.ACCEL) {
