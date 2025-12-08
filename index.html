@@ -1,11 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <!-- PWA (Android/Chrome) -->
-<meta name="mobile-web-app-capable" content="yes">
-<!-- PWA (iOS/Safari) -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PhysioTempo</title>
@@ -14,9 +9,11 @@
   <!-- PWA -->
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#0b0d12" />
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
 </head>
 <body>
   <main class="container">
@@ -37,9 +34,11 @@
         <label>
           <span class="i18n" data-key="mode_label">Cadence</span>
           <select id="mode">
-            <option value="accel" class="i18n" data-key="mode_accel">Cadence progressive</option>
-            <option value="steady" class="i18n" data-key="mode_steady">Cadence fixe (durée)</option>
-            <option value="random" class="i18n" data-key="mode_random">Cadence aléatoire</option>
+            <option value="accel"     class="i18n" data-key="mode_accel">Cadence progressive</option>
+            <option value="steady"    class="i18n" data-key="mode_steady">Cadence fixe (durée)</option>
+            <option value="random"    class="i18n" data-key="mode_random">Cadence aléatoire</option>
+            <option value="ecc"       class="i18n" data-key="mode_ecc">Excentrique (séries × reps)</option>
+            <option value="hsr"       class="i18n" data-key="mode_hsr">HSR (séries × reps)</option>
           </select>
         </label>
       </div>
@@ -72,7 +71,7 @@
           </label>
         </fieldset>
 
-        <!-- Cadence fixe (durée) -->
+        <!-- Cadence fixe -->
         <fieldset class="mode-panel hidden" data-mode="steady">
           <legend class="i18n" data-key="mode_steady">Cadence fixe (durée)</legend>
 
@@ -90,7 +89,7 @@
           </label>
         </fieldset>
 
-        <!-- Cadence aléatoire (durée) -->
+        <!-- Cadence aléatoire -->
         <fieldset class="mode-panel hidden" data-mode="random">
           <legend class="i18n" data-key="mode_random">Cadence aléatoire</legend>
 
@@ -116,7 +115,77 @@
           </label>
         </fieldset>
 
-        <!-- Options démarrage / cycles (communes) -->
+        <!-- Excentrique -->
+        <fieldset class="mode-panel hidden" data-mode="ecc">
+          <legend class="i18n" data-key="mode_ecc">Excentrique (séries × reps)</legend>
+
+          <label>
+            <span class="i18n" data-key="ecc_sets_label">Séries</span>
+            <input id="eccSets" type="number" min="1" max="20" step="1" value="3" />
+          </label>
+
+          <label>
+            <span class="i18n" data-key="ecc_reps_label">Répétitions par série</span>
+            <input id="eccReps" type="number" min="1" max="50" step="1" value="15" />
+          </label>
+
+          <label>
+            <span class="i18n" data-key="ecc_work_label">Temps d’effort excentrique (s)</span>
+            <input id="eccWorkSec" type="number" min="1" max="15" step="1" value="6" />
+          </label>
+
+          <label>
+            <span class="i18n" data-key="ecc_return_label">Retour à la position de départ (s)</span>
+            <input id="eccReturnSec" type="number" min="0" max="15" step="1" value="3" />
+          </label>
+        </fieldset>
+
+        <!-- HSR -->
+        <fieldset class="mode-panel hidden" data-mode="hsr">
+          <legend class="i18n" data-key="mode_hsr">HSR (séries × reps)</legend>
+
+          <label>
+            <span class="i18n" data-key="hsr_sets_label">Séries</span>
+            <input id="hsrSets" type="number" min="1" max="20" step="1" value="3">
+          </label>
+
+          <label>
+            <span class="i18n" data-key="hsr_reps_label">Répétitions par série</span>
+            <input id="hsrReps" type="number" min="1" max="50" step="1" value="15">
+          </label>
+
+          <label>
+            <span class="i18n" data-key="hsr_con_label">Concentrique (s)</span>
+            <input id="hsrConSec" type="number" min="1" max="15" step="1" value="3">
+          </label>
+
+          <label>
+            <span class="i18n" data-key="hsr_ecc_label">Excentrique (s)</span>
+            <input id="hsrEccSec" type="number" min="1" max="15" step="1" value="3">
+          </label>
+
+          <label>
+            <span class="i18n" data-key="hsr_hold_top_label">Pause en haut (s)</span>
+            <input id="hsrHoldTop" type="number" min="0" max="10" step="1" value="0">
+          </label>
+
+          <label>
+            <span class="i18n" data-key="hsr_hold_bottom_label">Pause en bas (s)</span>
+            <input id="hsrHoldBottom" type="number" min="0" max="10" step="1" value="0">
+          </label>
+
+          <label>
+            <span class="i18n" data-key="hsr_rep_rest_label">Repos entre répétitions (s)</span>
+            <input id="hsrRepRest" type="number" min="0" max="20" step="1" value="0">
+          </label>
+
+          <label>
+            <span class="i18n" data-key="hsr_rest_label">Repos entre séries (s)</span>
+            <input id="hsrRest" type="number" min="0" max="600" step="5" value="120">
+          </label>
+        </fieldset>
+
+        <!-- Options communes -->
         <fieldset class="mode-panel common">
           <legend class="i18n" data-key="start_options">Démarrage & cycles</legend>
 
@@ -133,16 +202,12 @@
           <label>
             <span class="i18n" data-key="countdown_sound_label">Signal du compte à rebours</span>
             <select id="countdownSound">
-              <option value="none" class="i18n" data-key="cd_none">Muet</option>
-              <option value="beep" class="i18n" data-key="cd_beep" selected>Bip</option>
+              <option value="none"  class="i18n" data-key="cd_none">Muet</option>
+              <option value="beep"  class="i18n" data-key="cd_beep" selected>Bip</option>
               <option value="voice" class="i18n" data-key="cd_voice">Voix (FR/EN)</option>
             </select>
           </label>
         </fieldset>
-        <small class="muted" id="iosVoiceNote">
-  iOS : le mode « Voix (FR/EN) » peut ne pas fonctionner sur iPhone/iPad (limitation Safari). 
-  Préférez « Bip » sur iOS.
-</small>
       </div>
 
       <div class="buttons">
@@ -173,8 +238,8 @@
         </div>
       </div>
 
-      <!-- Texte d’aide dynamique -->
       <p class="hint" id="hintText"></p>
+      <p id="iosVoiceNote" class="muted" style="display:none">⚠️ La voix du compte à rebours peut ne pas fonctionner sur iOS. Utiliser le mode « Bip ».</p>
     </section>
 
     <footer class="foot">
