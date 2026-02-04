@@ -1,7 +1,7 @@
 /*!
  * PhysioTempo — + Mode Excentrique + HSR (repos reps & séries)
  * TTS/Beep only + iOS fixes + Wake Lock
- * Build: 2026-02-04 v22
+ * Build: 2026-02-04 v23
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
