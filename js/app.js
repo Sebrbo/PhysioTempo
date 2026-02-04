@@ -1,25 +1,28 @@
 /*!
  * PhysioTempo — + Mode Excentrique + HSR (repos reps & séries)
  * TTS/Beep only + iOS fixes + Wake Lock
- * Build: 2025-12-08 v20
+ * Build: 2026-02-04 v22
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
   'use strict';
-// --- Version de build lue depuis la balise <script src="js/app.js?v=..."> ---
-function getBuildVersion() {
-  try {
-    const scripts = Array.from(document.getElementsByTagName('script'));
-    const s = scripts.find(el => (el.src || '').includes('js/app.js'));
-    if (!s) return 'dev';
-    const url = new URL(s.src, location.href);
-    return url.searchParams.get('v') || 'dev';
-  } catch {
-    return 'dev';
+
+  // --- Version de build : lit d'abord data-build, puis ?v=..., sinon "dev"
+  function getBuildVersion() {
+    try {
+      const scripts = Array.from(document.getElementsByTagName('script'));
+      const s = scripts.find(el => (el.src || '').includes('js/app.js'));
+      if (!s) return 'dev';
+      if (s.dataset && s.dataset.build) return s.dataset.build;
+      const url = new URL(s.src, location.href);
+      return url.searchParams.get('v') || 'dev';
+    } catch {
+      return 'dev';
+    }
   }
-}
-const BUILD_VERSION = getBuildVersion();
-console.log('PhysioTempo build =', BUILD_VERSION);
+  const BUILD_VERSION = getBuildVersion();
+  console.log('PhysioTempo build =', BUILD_VERSION);
+
   // ---------- Volume global (sans slider) ----------
   const MASTER_GAIN   = 1.0; // 0.0–2.0
   const VOL_COUNTDOWN = 1.4; // niveau des signaux (bip/voix) CR & tempo
@@ -135,6 +138,7 @@ console.log('PhysioTempo build =', BUILD_VERSION);
 
   // ---------- DOM refs ----------
   const versionEl = document.getElementById('appVersion');
+
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
@@ -219,8 +223,7 @@ console.log('PhysioTempo build =', BUILD_VERSION);
   applyI18n(savedLang);
   setStatus('au repos');
 
-  // ➜ afficher la version
-if (versionEl) versionEl.textContent = BUILD_VERSION;
+  if (versionEl) versionEl.textContent = BUILD_VERSION;
 
   const savedCd = localStorage.getItem('pt_cd_sound') || 'beep';
   if (countdownSoundEl) countdownSoundEl.value = savedCd;
@@ -385,52 +388,59 @@ if (versionEl) versionEl.textContent = BUILD_VERSION;
 
     while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
 
-     } else if (currentMode === MODES.ECC) {
-  if (!ecc || !ecc.phases?.length) { stop(true); return; }
+      if (currentMode === MODES.ECC) {
+        // --- Excentrique ---
+        if (!ecc || !ecc.phases?.length) { stop(true); return; }
 
-  const phase = ecc.phases[ecc.phaseIdx];
+        const phase = ecc.phases[ecc.phaseIdx];
 
-  // ➜ Bips UNIQUEMENT pendant l’excentrique
-  if (phase.name === 'ecc') {
-    const isLastSecondOfEcc = (ecc.secIntoPhase + 1 >= phase.dur);
-    const freq = isLastSecondOfEcc ? 1200 : 940;  // accent à la fin des 6 s
-    const vol  = isLastSecondOfEcc ? 1.6  : 1.0;
-    scheduleTempoBeep(nextNoteTime, freq, 0.18, vol);
-  }
-  // ➜ Retour (phase 'ret') = SILENCE
+        // ➜ Bips UNIQUEMENT pendant l’excentrique
+        if (phase.name === 'ecc') {
+          const isLastSecondOfEcc = (ecc.secIntoPhase + 1 >= phase.dur);
+          const freq = isLastSecondOfEcc ? 1200 : 940;  // accent sur la 6e s
+          const vol  = isLastSecondOfEcc ? 1.6  : 1.0;
+          scheduleTempoBeep(nextNoteTime, freq, 0.18, vol);
+        }
+        // Retour = silence
 
-  // Avance d'une seconde
-  nextNoteTime += 1.0;
-  ecc.secIntoPhase += 1;
+        // Avance d'une seconde
+        nextNoteTime += 1.0;
+        ecc.secIntoPhase += 1;
 
-  // Gestion fin de phase / rep / série
-  if (ecc.secIntoPhase >= phase.dur) {
-    ecc.phaseIdx += 1;
-    ecc.secIntoPhase = 0;
+        // Passage de phase / rep / série
+        if (ecc.secIntoPhase >= phase.dur) {
+          ecc.phaseIdx += 1;
+          ecc.secIntoPhase = 0;
 
-    // Fin de répétition ?
-    if (ecc.phaseIdx >= ecc.phases.length) {
-      ecc.rep += 1;
-      ecc.phaseIdx = 0;
+          // Fin de répétition ?
+          if (ecc.phaseIdx >= ecc.phases.length) {
+            ecc.rep += 1;
+            ecc.phaseIdx = 0;
 
-      // Fin de série ?
-      if (ecc.rep > ecc.totalReps) {
-        ecc.set += 1; ecc.rep = 1;
-        if (ecc.set > ecc.totalSets) { stop(true); return; }
-      }
-    }
-  }
-}
+            // Fin de série ?
+            if (ecc.rep > ecc.totalReps) {
+              ecc.set += 1; ecc.rep = 1;
+              if (ecc.set > ecc.totalSets) { stop(true); return; }
+            }
+          }
+        }
 
       } else if (currentMode === MODES.HSR) {
+        // --- HSR ---
         // Repos entre répétitions ?
         if (hsr?.repRestUntil && nextNoteTime < hsr.repRestUntil) {
           nextNoteTime = hsr.repRestUntil;
+          // sortie du repos (UI)
+          hsr.repRestUntil = null;
+          stopRestUI(); setTimeLeftLabel(false);
           continue;
         }
         // Repos entre séries ?
         if (hsr?.restUntil && nextNoteTime < hsr.restUntil) {
           nextNoteTime = hsr.restUntil;
+          // sortie du repos (UI)
+          hsr.restUntil = null;
+          stopRestUI(); setTimeLeftLabel(false);
           continue;
         }
         if (!hsr || !hsr.phases?.length) { stop(true); return; }
@@ -439,7 +449,7 @@ if (versionEl) versionEl.textContent = BUILD_VERSION;
         const isLastSecondOfPhase = (hsr.secIntoPhase + 1 >= phase.dur);
         const isLastPhaseOfRep = (hsr.phaseIdx === hsr.phases.length - 1);
 
-        // Bip standard chaque seconde, accent sur changement de phase / fin de rep
+        // Bip standard chaque seconde, accent sur fin de phase / fin de rep
         const freq = (isLastSecondOfPhase && isLastPhaseOfRep) ? 1200 :
                      (isLastSecondOfPhase ? 1020 : 940);
         scheduleTempoBeep(nextNoteTime, freq);
@@ -488,7 +498,7 @@ if (versionEl) versionEl.textContent = BUILD_VERSION;
         }
 
       } else {
-        // Modes histor.: accel / steady / random
+        // --- Modes historiques : accel / steady / random ---
         scheduleTempoBeep(nextNoteTime);
 
         let interval = 0.5;
