@@ -6,7 +6,20 @@
  */
 (() => {
   'use strict';
-
+// --- Version de build lue depuis la balise <script src="js/app.js?v=..."> ---
+function getBuildVersion() {
+  try {
+    const scripts = Array.from(document.getElementsByTagName('script'));
+    const s = scripts.find(el => (el.src || '').includes('js/app.js'));
+    if (!s) return 'dev';
+    const url = new URL(s.src, location.href);
+    return url.searchParams.get('v') || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+const BUILD_VERSION = getBuildVersion();
+console.log('PhysioTempo build =', BUILD_VERSION);
   // ---------- Volume global (sans slider) ----------
   const MASTER_GAIN   = 1.0; // 0.0–2.0
   const VOL_COUNTDOWN = 1.4; // niveau des signaux (bip/voix) CR & tempo
@@ -121,6 +134,7 @@
   };
 
   // ---------- DOM refs ----------
+  const versionEl = document.getElementById('appVersion');
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
   const rampEl       = $('#rampSeconds');
@@ -204,6 +218,9 @@
   showPanelFor(currentMode);
   applyI18n(savedLang);
   setStatus('au repos');
+
+  // ➜ afficher la version
+if (versionEl) versionEl.textContent = BUILD_VERSION;
 
   const savedCd = localStorage.getItem('pt_cd_sound') || 'beep';
   if (countdownSoundEl) countdownSoundEl.value = savedCd;
