@@ -1,7 +1,7 @@
 /*!
  * PhysioTempo — + Mode Excentrique + HSR (repos reps & séries)
  * TTS/Beep only + iOS fixes + Wake Lock
- * Build: 2025-12-08 v19
+ * Build: 2025-12-08 v20
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
@@ -368,39 +368,42 @@
 
     while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
 
-      if (currentMode === MODES.ECC) {
-        if (!ecc || !ecc.phases?.length) { stop(true); return; }
+     } else if (currentMode === MODES.ECC) {
+  if (!ecc || !ecc.phases?.length) { stop(true); return; }
 
-        const phase = ecc.phases[ecc.phaseIdx];
-        const isLastSecondOfPhase = (ecc.secIntoPhase + 1 >= phase.dur);
-        const isEccentricPhase = (phase.name === 'ecc');
-        // Accent "plus fort" à la fin des 6 s excentriques
-        const freq = isLastSecondOfPhase && isEccentricPhase ? 1200 : 940;
-        const vol  = isLastSecondOfPhase && isEccentricPhase ? 1.5  : 1.0;
-        scheduleTempoBeep(nextNoteTime, freq, 0.18, vol);
+  const phase = ecc.phases[ecc.phaseIdx];
 
-        nextNoteTime += 1.0;
-        ecc.secIntoPhase += 1;
+  // ➜ Bips UNIQUEMENT pendant l’excentrique
+  if (phase.name === 'ecc') {
+    const isLastSecondOfEcc = (ecc.secIntoPhase + 1 >= phase.dur);
+    const freq = isLastSecondOfEcc ? 1200 : 940;  // accent à la fin des 6 s
+    const vol  = isLastSecondOfEcc ? 1.6  : 1.0;
+    scheduleTempoBeep(nextNoteTime, freq, 0.18, vol);
+  }
+  // ➜ Retour (phase 'ret') = SILENCE
 
-        if (ecc.secIntoPhase >= phase.dur) {
-          ecc.phaseIdx += 1;
-          ecc.secIntoPhase = 0;
+  // Avance d'une seconde
+  nextNoteTime += 1.0;
+  ecc.secIntoPhase += 1;
 
-          // Fin de rep ?
-          if (ecc.phaseIdx >= ecc.phases.length) {
-            ecc.rep += 1;
-            ecc.phaseIdx = 0;
+  // Gestion fin de phase / rep / série
+  if (ecc.secIntoPhase >= phase.dur) {
+    ecc.phaseIdx += 1;
+    ecc.secIntoPhase = 0;
 
-            // Fin de série ?
-            if (ecc.rep > ecc.totalReps) {
-              ecc.set += 1;
-              ecc.rep = 1;
-              if (ecc.set > ecc.totalSets) {
-                stop(true); return;
-              }
-            }
-          }
-        }
+    // Fin de répétition ?
+    if (ecc.phaseIdx >= ecc.phases.length) {
+      ecc.rep += 1;
+      ecc.phaseIdx = 0;
+
+      // Fin de série ?
+      if (ecc.rep > ecc.totalReps) {
+        ecc.set += 1; ecc.rep = 1;
+        if (ecc.set > ecc.totalSets) { stop(true); return; }
+      }
+    }
+  }
+}
 
       } else if (currentMode === MODES.HSR) {
         // Repos entre répétitions ?
