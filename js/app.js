@@ -37,6 +37,9 @@
   // ---------- i18n ----------
   const i18nDict = {
     en: {
+      preset_load: "Load preset",
+      preset_save: "Save preset",
+      preset_reset: "Reset",
       language: "Language",
       mode_label: "Cadence",
       mode_accel: "Progressive cadence",
@@ -86,6 +89,9 @@
       voice_steps: ["four","three","two","one","go"]
     },
     fr: {
+      preset_load: "Charger préréglage",
+      preset_save: "Enregistrer",
+      preset_reset: "Réinit.",
       language: "Langue",
       mode_label: "Cadence",
       mode_accel: "Cadence progressive",
@@ -171,7 +177,9 @@
 
   const startBtn = $('#startBtn');
   const stopBtn  = $('#stopBtn');
-  const presetBtn = $('#preset');
+  const presetLoadBtn  = document.getElementById('presetLoad');
+  const presetSaveBtn  = document.getElementById('presetSave');
+  const presetResetBtn = document.getElementById('presetReset');
   const langSelect = $('#langSelect');
   const modeSelect = $('#mode');
   const hintEl   = $('#hintText');
@@ -187,6 +195,8 @@
   if (iosVoiceNoteEl) iosVoiceNoteEl.style.display = isIOS ? 'block' : 'none';
 
   const panels = Array.from(document.querySelectorAll('.mode-panel'));
+
+  const PRESET_KEY = 'pt_preset_v2';
 
   // ---------- State ----------
   let currentMode = localStorage.getItem('pt_mode') || MODES.ACCEL;
@@ -282,7 +292,77 @@
       else p.classList.toggle('hidden', p.getAttribute('data-mode') !== mode);
     });
   }
+  
+// --- Préréglage : structure, lecture/écriture, application ---
+function defaultPreset() {
+  return {
+    mode: MODES.ACCEL,
+    params: { startBpm: 40, endBpm: 50, rampSeconds: 120 },
+    common: { autoRestart: false, autoRestartDelay: 5, countdownSound: 'beep' }
+  };
+}
 
+function fieldsByMode(mode) {
+  return {
+    [MODES.ACCEL]:  ['startBpm','endBpm','rampSeconds'],
+    [MODES.STEADY]: ['steadyBpm','steadySeconds'],
+    [MODES.RANDOM]: ['minBpm','maxBpm','randomSeconds'],
+    [MODES.ECC]:    ['eccSets','eccReps','eccWorkSec','eccReturnSec'],
+    [MODES.HSR]:    ['hsrSets','hsrReps','hsrConSec','hsrEccSec','hsrHoldTop','hsrHoldBottom','hsrRepRest','hsrRest'],
+  }[mode] || [];
+}
+
+function readUI(ids) {
+  const o = {};
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') o[id] = !!el.checked;
+    else if (el.tagName === 'SELECT') o[id] = el.value;
+    else o[id] = safeNum(el.value, 0);
+  });
+  return o;
+}
+
+function writeUI(obj) {
+  Object.entries(obj).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!val;
+    else el.value = val;
+  });
+}
+
+function loadPreset() {
+  try { return JSON.parse(localStorage.getItem(PRESET_KEY)) || defaultPreset(); }
+  catch { return defaultPreset(); }
+}
+
+function savePreset(p) {
+  localStorage.setItem(PRESET_KEY, JSON.stringify(p));
+}
+
+function buildPresetFromUI() {
+  const mode = modeSelect?.value || MODES.ACCEL;
+  const params = readUI(fieldsByMode(mode));
+  const common = readUI(['autoRestart','autoRestartDelay','countdownSound']);
+  return { mode, params, common };
+}
+
+function applyPreset(p) {
+  const preset = p || loadPreset();
+  // Mode + panneaux
+  if (modeSelect) modeSelect.value = preset.mode;
+  currentMode = preset.mode;
+  showPanelFor(currentMode);
+  updateHintText();
+
+  // Valeurs du mode
+  writeUI(preset.params || {});
+
+  // Options communes
+  writeUI(preset.common || {});
+}
   // ---------- Audio graph ----------
   function ensureAudio() {
     if (!audioCtx) {
@@ -824,16 +904,30 @@
     stopRestUI();
     stop(false);
   });
-  presetBtn?.addEventListener('click', () => {
-    if (modeSelect) modeSelect.value = MODES.ACCEL;
-    currentMode = MODES.ACCEL;
-    localStorage.setItem('pt_mode', currentMode);
-    showPanelFor(currentMode);
-    updateHintText();
-    if (startBpmEl) startBpmEl.value = 40;
-    if (endBpmEl)   endBpmEl.value   = 50;
-    if (rampEl)     rampEl.value     = 120;
-  });
+  
+ // --- Préréglage : Charger / Enregistrer / Réinit ---
+// (Nécessite les helpers defaultPreset / loadPreset / savePreset / buildPresetFromUI / applyPreset)
+
+presetLoadBtn?.addEventListener('click', () => {
+  applyPreset(loadPreset());
+  const fr = (langSelect?.value || savedLang).startsWith('fr');
+  setStatus(fr ? 'préréglage chargé' : 'preset loaded');
+});
+
+presetSaveBtn?.addEventListener('click', () => {
+  const p = buildPresetFromUI();
+  savePreset(p);
+  const fr = (langSelect?.value || savedLang).startsWith('fr');
+  setStatus(fr ? 'préréglage enregistré' : 'preset saved');
+});
+
+presetResetBtn?.addEventListener('click', () => {
+  const p = defaultPreset();
+  savePreset(p);
+  applyPreset(p);
+  const fr = (langSelect?.value || savedLang).startsWith('fr');
+  setStatus(fr ? 'préréglage réinitialisé' : 'preset reset');
+});
 
   [startBpmEl, endBpmEl, steadyBpmEl, minBpmEl, maxBpmEl].forEach(inp => {
     inp?.addEventListener('change', () => { inp.value = clamp(safeNum(inp.value, 0), 20, 300); });
