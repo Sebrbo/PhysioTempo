@@ -1,13 +1,13 @@
 // service-worker.js — PhysioTempo (clean, no audio cached)
-// v15 — 2025-11-19
+// v24 — 2026-06-29
 
-const CACHE_NAME = "physiotempo-v15";
+const CACHE_NAME = "physiotempo-v24";
 
 const ASSETS = [
   "./",
   "./index.html",
   "./css/style.css",
-  "./js/app.js",
+  "./js/app.js?v=2026-06-29-v24",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
