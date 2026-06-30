@@ -3,10 +3,10 @@
   "short_name": "PhysioTempo",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#eef4f1",
-  "theme_color": "#eef4f1",
+  "background_color": "#edf4f8",
+  "theme_color": "#edf4f8",
   "lang": "fr",
-  "description": "Entraîneur de cadence bilingue avec rampe linéaire, cadence fixe (durée) et cadence aléatoire. PWA hors-ligne.",
+  "description": "Webapp de cadence bilingue pour kine/reeducation avec modes progressive accel, steady, random, ecc et hsr. PWA hors-ligne.",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
