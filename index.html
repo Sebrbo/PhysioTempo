@@ -33,7 +33,7 @@
       <div class="mode-row">
         <label>
           <span class="i18n" data-key="mode_label">Cadence</span>
-          <select id="mode">
+          <select id="mode" aria-describedby="hintText">
             <option value="accel"     class="i18n" data-key="mode_accel">Cadence progressive</option>
             <option value="steady"    class="i18n" data-key="mode_steady">Cadence fixe (durée)</option>
             <option value="random"    class="i18n" data-key="mode_random">Cadence aléatoire</option>
@@ -223,31 +223,31 @@
 
   <div class="spacer"></div>
 
-  <button id="startBtn" class="primary">
+  <button id="startBtn" class="primary" aria-describedby="hintText">
     <span class="i18n" data-key="start">Démarrer</span>
   </button>
-  <button id="stopBtn" class="danger" disabled>
+  <button id="stopBtn" class="danger" aria-describedby="status" disabled>
     <span class="i18n" data-key="stop">Arrêter</span>
   </button>
 </div>
 
-      <div class="readout">
+      <div class="readout" aria-label="Indicateurs de séance">
         <div>
           <small class="muted i18n" data-key="current_bpm">Cadence actuelle (bpm)</small>
-          <div id="bpmNow" class="mono big">—</div>
+          <div id="bpmNow" class="mono big" aria-live="polite" aria-atomic="true">—</div>
         </div>
         <div>
           <small class="muted i18n" data-key="status">Statut</small>
-          <div id="status" class="mono">au repos</div>
+          <div id="status" class="mono" role="status" aria-live="polite" aria-atomic="true">au repos</div>
         </div>
         <div>
           <small class="muted i18n" data-key="time_left">Temps restant</small>
-          <div id="timeLeft" class="mono">—</div>
+          <div id="timeLeft" class="mono" aria-live="polite" aria-atomic="true">—</div>
         </div>
       </div>
 
-      <p class="hint" id="hintText"></p>
-      <p id="iosVoiceNote" class="muted" style="display:none">La voix du compte à rebours peut ne pas fonctionner sur iOS. Utiliser le mode « Bip ».</p>
+      <p class="hint" id="hintText" aria-live="polite"></p>
+      <p id="iosVoiceNote" class="muted" aria-live="polite" style="display:none">La voix du compte à rebours peut ne pas fonctionner sur iOS. Utiliser le mode « Bip ».</p>
     </section>
 
     <footer class="foot">
@@ -258,7 +258,7 @@
   </main>
 
   <!-- Overlay compte à rebours -->
-  <div id="overlay" class="overlay hidden">
+  <div id="overlay" class="overlay hidden" role="status" aria-live="assertive" aria-atomic="true">
     <div id="countdown" class="countdown">4</div>
   </div>
 

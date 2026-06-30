@@ -206,6 +206,11 @@ button:focus-visible {
   box-shadow: 0 0 0 3px rgba(29, 121, 255, 0.18);
 }
 
+input[type="checkbox"]:focus-visible {
+  outline: 3px solid rgba(29, 121, 255, 0.5);
+  outline-offset: 3px;
+}
+
 input[type="checkbox"] {
   width: 1.2rem;
   height: 1.2rem;
