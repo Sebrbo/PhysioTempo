@@ -3,8 +3,8 @@
   "short_name": "PhysioTempo",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#0b0d12",
-  "theme_color": "#0b0d12",
+  "background_color": "#eef4f1",
+  "theme_color": "#eef4f1",
   "lang": "fr",
   "description": "Entraîneur de cadence bilingue avec rampe linéaire, cadence fixe (durée) et cadence aléatoire. PWA hors-ligne.",
   "icons": [
