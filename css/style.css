@@ -596,10 +596,46 @@ button:disabled {
   .topbar {
     align-items: stretch;
     flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .topbar::after {
+    right: var(--space-3);
+    bottom: 0.35rem;
+    width: min(42%, 12rem);
+    height: 1.55rem;
+    opacity: 0.75;
+  }
+
+  h1 {
+    gap: var(--space-2);
+    font-size: 1.78rem;
+  }
+
+  h1::before {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  h1::after {
+    left: 1.75rem;
+    bottom: -0.35rem;
+    width: 6.4rem;
   }
 
   .lang {
     justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .lang label {
+    font-size: 0.88rem;
+  }
+
+  .lang select {
+    min-height: 2.65rem;
+    padding-block: 0.55rem;
   }
 
   .card {
