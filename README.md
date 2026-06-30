@@ -63,7 +63,7 @@ Le code actuel ne contient pas de raccourci clavier dedie pour demarrer avec la 
 
 - Le manifeste PWA est declare dans `manifest.webmanifest`.
 - Le fonctionnement offline est gere par `service-worker.js`.
-- Les fichiers principaux mis en cache incluent `index.html`, le CSS versionne `css/style.css?v=2026-06-30-v25`, le script applicatif versionne `js/app.js?v=2026-06-29-v24`, le manifeste et les icones.
+- Les fichiers principaux mis en cache incluent `index.html`, le CSS versionne `css/style.css?v=2026-06-30-v25`, le script applicatif versionne `js/app.js?v=2026-06-30-v25`, le manifeste et les icones.
 - Installation :
   - **Desktop** : Chrome/Edge -> Installer l'application.
   - **Android** : Ajouter a l'ecran d'accueil.
@@ -142,7 +142,7 @@ The current code does not include a dedicated Space keyboard shortcut for starti
 
 - The PWA manifest is declared in `manifest.webmanifest`.
 - Offline behavior is handled by `service-worker.js`.
-- Cached core files include `index.html`, the versioned CSS `css/style.css?v=2026-06-30-v25`, the versioned app script `js/app.js?v=2026-06-29-v24`, the manifest, and icons.
+- Cached core files include `index.html`, the versioned CSS `css/style.css?v=2026-06-30-v25`, the versioned app script `js/app.js?v=2026-06-30-v25`, the manifest, and icons.
 - Install:
   - **Desktop**: Chrome/Edge -> Install app.
   - **Android**: Add to Home screen.

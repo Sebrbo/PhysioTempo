@@ -1,7 +1,7 @@
 /*!
  * PhysioTempo — + Mode Excentrique + HSR (repos reps & séries)
  * TTS/Beep only + iOS fixes + Wake Lock
- * Build: 2026-06-29-v24
+ * Build: 2026-06-30-v25
  * Code: PolyForm Noncommercial 1.0.0 | Assets: CC BY-NC 4.0
  */
 (() => {
@@ -144,6 +144,7 @@
 
   // ---------- DOM refs ----------
   const versionEl = document.getElementById('appVersion');
+  const copyrightYearEl = document.getElementById('copyrightYear');
 
   const startBpmEl   = $('#startBpm');
   const endBpmEl     = $('#endBpm');
@@ -234,6 +235,7 @@
   setStatus('au repos');
 
   if (versionEl) versionEl.textContent = BUILD_VERSION;
+  if (copyrightYearEl) copyrightYearEl.textContent = String(new Date().getFullYear());
 
   const savedCd = localStorage.getItem('pt_cd_sound') || 'beep';
   if (countdownSoundEl) countdownSoundEl.value = savedCd;
@@ -872,8 +874,7 @@ function applyPreset(p) {
       setStatus(fr ? `compte à rebours avant redémarrage` : `countdown before restart`);
       if (audioCtx) {
         restEndTime = audioCtx.currentTime + delaySec;
-        startRestUI();
-        setTimeLeftLabel(true);
+        startRestUI(); setTimeLeftLabel(true);
       }
       autoRestartTimerId = setTimeout(() => {
         autoRestartTimerId = null;
